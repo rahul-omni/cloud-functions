@@ -141,9 +141,9 @@ const fetchSupremeCourtJudgments = async (date) => {
         // Add missing required fields
         "file_path": "",
         "case_type": "", // Supreme Court doesn't provide case type
-        "city": "New Delhi", // Supreme Court is in New Delhi
+        "city": "", // Supreme Court is in New Delhi
         "district": "", // Not applicable for Supreme Court
-        "judgment_type": "Judgment", // Default for Supreme Court
+        "judgment_type": "", // Default for Supreme Court
         "court": "Supreme Court", // Required for new schema
         "date": new Date().toISOString(),
         "created_at": new Date().toISOString(), 
