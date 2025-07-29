@@ -1,0 +1,129 @@
+{"Response Data": {
+    "success": true,
+    "date": "15-03-2024",
+    "count": 6,
+    "data": [
+      {
+        "Serial Number": "1",
+        "Diary Number": "7859/2023",
+        "Case Number": "Crl.A. No.-000741-000741 - 2024",
+        "Petitioner / Respondent": "RAKESH RANJAN SHRIVASTAVAVSTHE STATE OF JHARKHAND",
+        "Petitioner/Respondent Advocate": "SHUBHAM BHALLA __",
+        "Bench": "HON'BLE MR. JUSTICE ABHAY S. OKA HON'BLE MR. JUSTICE UJJAL BHUYAN",
+        "Judgment By": "HON'BLE MR. JUSTICE ABHAY S. OKA",
+        "Judgment": "15-03-2024(English) 2024 INSC 205(English)",
+        "judgmentLinks": [
+          {
+            "text": "15-03-2024(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2023/7859/7859_2023_8_1502_51462_Judgement_15-Mar-2024.pdf"
+          },
+          {
+            "text": "2024 INSC 205(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2023/7859/7859_2023_8_1502_51462_Judgement_15-Mar-2024.pdf"
+          }
+        ]
+      },
+      {
+        "Serial Number": "2",
+        "Diary Number": "11805/2024",
+        "Case Number": "- 0",
+        "Petitioner / Respondent": "ASSOCIATION OF DEMOCRATICE REMORMS AND ANR.VSUNION OF INDIA AND ORS",
+        "Petitioner/Respondent Advocate": "AMIT SHARMA __",
+        "Bench": "HON'BLE THE CHIEF JUSTICE HON'BLE THE CHIEF JUSTICE HON'BLE THE CHIEF JUSTICE HON'BLE MR. JUSTICE J.B. PARDIWALA HON'BLE MR. JUSTICE MANOJ MISRA",
+        "Judgment By": "HON'BLE THE CHIEF JUSTICE",
+        "Judgment": "15-03-2024(English) 2024 INSC 209(English)",
+        "judgmentLinks": [
+          {
+            "text": "15-03-2024(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2024/11805/11805_2024_1_501_51545_Judgement_15-Mar-2024.pdf"
+          },
+          {
+            "text": "2024 INSC 209(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2024/11805/11805_2024_1_501_51545_Judgement_15-Mar-2024.pdf"
+          }
+        ]
+      },
+      {
+        "Serial Number": "3",
+        "Diary Number": "12603/2009",
+        "Case Number": "Crl.A. No.-001607-001607 - 2009",
+        "Petitioner / Respondent": "JAFARVSSTATE OF KERALA",
+        "Petitioner/Respondent Advocate": "T. N. SINGH __ HARSHAD V. HAMEED",
+        "Bench": "HON'BLE THE CHIEF JUSTICE HON'BLE MR. JUSTICE SANDEEP MEHTA",
+        "Judgment By": "HON'BLE THE CHIEF JUSTICE",
+        "Judgment": "15-03-2024(English) 2024 INSC 207(English)",
+        "judgmentLinks": [
+          {
+            "text": "15-03-2024(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2009/12603/12603_2009_3_1501_51458_Judgement_15-Mar-2024.pdf"
+          },
+          {
+            "text": "2024 INSC 207(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2009/12603/12603_2009_3_1501_51458_Judgement_15-Mar-2024.pdf"
+          }
+        ]
+      },
+      {
+        "Serial Number": "4",
+        "Diary Number": "32204/2017",
+        "Case Number": "W.P.(C) No.-000993 - 2017",
+        "Petitioner / Respondent": "JUSTICE M. VIJAYARAGHAVANVSUNION OF INDIA",
+        "Petitioner/Respondent Advocate": "B. BALAJI __",
+        "Bench": "HON'BLE THE CHIEF JUSTICE HON'BLE MR. JUSTICE AUGUSTINE GEORGE MASIH",
+        "Judgment By": "HON'BLE THE CHIEF JUSTICE",
+        "Judgment": "15-03-2024(English) 2024 INSC 219(English)",
+        "judgmentLinks": [
+          {
+            "text": "15-03-2024(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2017/32204/32204_2017_1_15_51457_Judgement_15-Mar-2024.pdf"
+          },
+          {
+            "text": "2024 INSC 219(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2017/32204/32204_2017_1_15_51457_Judgement_15-Mar-2024.pdf"
+          }
+        ]
+      },
+      {
+        "Serial Number": "5",
+        "Diary Number": "34483/2022",
+        "Case Number": "Crl.A. No.-001577-001578 - 2024",
+        "Petitioner / Respondent": "SUSELA PADMAVATHY AMMAVSM/S. BHARTI AIRTEL LIMITED",
+        "Petitioner/Respondent Advocate": "SHILPA LIZA GEORGE __",
+        "Bench": "HON'BLE THE CHIEF JUSTICE HON'BLE MR. JUSTICE SANDEEP MEHTA",
+        "Judgment By": "HON'BLE THE CHIEF JUSTICE",
+        "Judgment": "15-03-2024(English) 2024 INSC 206(English)",
+        "judgmentLinks": [
+          {
+            "text": "15-03-2024(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2022/34483/34483_2022_3_1502_51458_Judgement_15-Mar-2024.pdf"
+          },
+          {
+            "text": "2024 INSC 206(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2022/34483/34483_2022_3_1502_51458_Judgement_15-Mar-2024.pdf"
+          }
+        ]
+      },
+      {
+        "Serial Number": "6",
+        "Diary Number": "39453/2022",
+        "Case Number": "C.A. No.-009385 - 2022",
+        "Petitioner / Respondent": "M/S GLOBAL TECHNOLOGIES AND RESEARCHVSPRINCIPAL COMMISSIONER OF CUSTOMS NEW DELHI (IMPORT)",
+        "Petitioner/Respondent Advocate": "MANOJ K. MISHRA __",
+        "Bench": "HON'BLE MR. JUSTICE ABHAY S. OKA HON'BLE MR. JUSTICE UJJAL BHUYAN",
+        "Judgment By": "HON'BLE MR. JUSTICE ABHAY S. OKA",
+        "Judgment": "15-03-2024(English) 2024 INSC 204(English)",
+        "judgmentLinks": [
+          {
+            "text": "15-03-2024(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2022/39453/39453_2022_8_1501_51462_Judgement_15-Mar-2024.pdf"
+          },
+          {
+            "text": "2024 INSC 204(English)",
+            "url": "https://api.sci.gov.in/supremecourt/2022/39453/39453_2022_8_1501_51462_Judgement_15-Mar-2024.pdf"
+          }
+        ]
+      }
+    ]
+  }
+
+}
