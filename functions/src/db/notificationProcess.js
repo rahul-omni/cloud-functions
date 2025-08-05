@@ -173,7 +173,7 @@ const insert_to_case_management_table = async (data) => {
                 district,
                 judgment_type
             ) VALUES ${values}
-            RETURNING diary_number
+            RETURNING diary_number, court, city, district
         )
         SELECT 
             ic.diary_number,
@@ -182,7 +182,12 @@ const insert_to_case_management_table = async (data) => {
             u.country_code,
             u.mobile_number
         FROM inserted_cases ic
-        JOIN user_cases uc ON ic.diary_number = uc.diary_number AND ic.court = uc.court
+        JOIN user_cases uc ON ic.diary_number = uc.diary_number 
+            AND ic.court = uc.court 
+            AND (
+                ic.court = 'Supreme Court' 
+                OR (COALESCE(ic.city, '') = COALESCE(uc.city, '') AND COALESCE(ic.district, '') = COALESCE(uc.district, ''))
+            )
         JOIN users u ON u.id = uc.user_id`;
 
     const result = await db.query(query, flattenedValues);
