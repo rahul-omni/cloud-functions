@@ -12,7 +12,7 @@ const storage = new Storage(); // Will use GOOGLE_APPLICATION_CREDENTIALS env va
  * @param {string} [filename] - Optional filename in GCS (bucket name will be extracted from filename)
  * @returns {Promise<Object>} - Object containing GCS path and signed URL
  */
-async function downloadPDFToGCS(cookies, url, filename) {
+async function uploadPDFToGCS(cookies, url, filename) {
     return new Promise((resolve, reject) => {
         // Remove duplicate cookies by name
         const uniqueCookies = Object.values(
@@ -172,4 +172,4 @@ async function generateSignedUrl(gcsPath, expiresInDays = 7) {
     }
 }
 
-module.exports = { downloadPDFToGCS, generateSignedUrl }; 
+module.exports = { uploadPDFToGCS, generateSignedUrl }; 
