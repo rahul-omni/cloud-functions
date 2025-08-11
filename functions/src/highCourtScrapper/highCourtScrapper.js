@@ -44,7 +44,7 @@ const HighCourtJudgmentsScrapper = async (date, diaryNumber, highCourtname, benc
         const results = await scrapeData(page, date, dbClient);
 
         return results;
-    } catch (error) {
+            } catch (error) {
         console.error('❌  Error:', error.message);
         console.log(`[error] [HighCourtJudgmentsScrapper]: ${error}`);
         throw error;
@@ -61,7 +61,7 @@ const HighCourtJudgmentsScrapper = async (date, diaryNumber, highCourtname, benc
                 console.error('❌  Error closing database connection:', dbCloseError.message);
             }
         }
-    }   
+    }
 };
 
 module.exports = {

@@ -23,7 +23,7 @@ const accessSecretVersion = async (projectId, secretName) => {
 // Function to access WhatsApp token as plain text
 const accessWhatsappSecretVersion = async (projectId, secretName) => {
   try {
-    const name = `projects/${projectId}/secrets/${secretName}/versions/1`;
+    const name = `projects/${projectId}/secrets/${secretName}/versions/5`;
     const [version] = await client.accessSecretVersion({ name });
     const payload = version.payload.data.toString();
     return payload.trim(); // Return the plain text token directly

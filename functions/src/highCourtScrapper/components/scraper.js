@@ -164,13 +164,13 @@ async function processPDFUploads(processedRows, cookies, date) {
         console.log(`\n📋 [processPDFUploads] Processing order ${i + 1}/${processedRows.length}: ${row.DiaryNumber} (${row.case_type})`);
         
         try {
-            // Upload PDF if it's a JUDGEMENT order
-            if (row.Order && row.Order.href && row.Order.text === 'JUDGEMENT') {
-                console.log(`📥 [processPDFUploads] Uploading PDF for JUDGEMENT order...`);
+            // Upload PDF if it has a link
+            if (row.Order && row.Order.href) {
+                console.log(`📥 [processPDFUploads] Uploading PDF for order (${row.Order.text})...`);
                 
                 try {
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // Remove milliseconds
-                    const filename = `order_${date.replace(/-/g, '')}_${row.DiaryNumber.replace(/\//g, '_')}_${timestamp}.pdf`;
+                    const filename = `HCDEL_${String(row.DiaryNumber).replace(/[^\w]+/g, '_')}_${String(row.case_type || '').replace(/[^\w]+/g, '_')}_${String(row.JudgetmentDate || date || '').replace(/[^0-9]/g, '')}_${new Date().toISOString().slice(11, 19).replace(/:/g, '')}.pdf`;
                     const gcsFilename = `high-court-judgement-pdf/${filename}`;
                     
                     const uploadResult = await uploadPDFToGCS(cookies, row.Order.href, gcsFilename);
@@ -189,8 +189,8 @@ async function processPDFUploads(processedRows, cookies, date) {
                     // Continue processing even if PDF upload fails
                 }
                 
-            } else if (row.Order && row.Order.href && row.Order.text !== 'JUDGEMENT') {
-                console.log(`⏭️  Skipping PDF upload (text: "${row.Order.text}")`);
+            } else {
+                console.log(`⏭️  Skipping PDF upload (no PDF link available)`);
             }
             
             // Transform the data to match the expected format for database insertion
@@ -232,13 +232,16 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                 // Entry doesn't exist - insert new entry
                 console.log(`📥 [processPDFAndInsertToDB] New entry - inserting to database...`);
                 
-                // Upload PDF if it's a JUDGEMENT order
-                if (row.Order && row.Order.href && row.Order.text === 'JUDGEMENT') {
-                    console.log(`📥 [processPDFAndInsertToDB] Uploading PDF for new JUDGEMENT order...`);
+                // Upload PDF if it has a link
+                if (row.Order && row.Order.href) {
+                    console.log(`📥 [processPDFAndInsertToDB] Uploading PDF for new order (${row.Order.text})...`);
                     
                     try {
-                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-                        const filename = `order_${date.replace(/-/g, '')}_${row.DiaryNumber.replace(/\//g, '_')}_${timestamp}.pdf`;
+                        const diarySanitized = String(row.DiaryNumber).replace(/[^\w]+/g, '_');
+                        const caseTypeSanitized = String(row.case_type || '').replace(/[^\w]+/g, '_');
+                        const judgmentDateSanitized = String(row.JudgetmentDate || date || '').replace(/[^0-9]/g, '');
+                        const timePart = new Date().toISOString().slice(11, 19).replace(/:/g, '');
+                        const filename = `HCDEL_${diarySanitized}_${caseTypeSanitized}_${judgmentDateSanitized}_${timePart}.pdf`;
                         const gcsFilename = `high-court-judgement-pdf/${filename}`;
                         
                         const uploadResult = await uploadPDFToGCS(cookies, row.Order.href, gcsFilename);
@@ -272,14 +275,17 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                 // Entry exists - check if PDF needs to be uploaded
                 console.log(`📋 [processPDFAndInsertToDB] Entry exists in database (ID: ${existingEntry.id})`);
                 
-                if (row.Order && row.Order.href && row.Order.text === 'JUDGEMENT') {
+                if (row.Order && row.Order.href) {
                     // Check if PDF path exists in database
                     if (!existingEntry.file_path) {
                         console.log(`📥 [processPDFAndInsertToDB] Entry exists but no PDF path - uploading PDF...`);
                         
                         try {
-                            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-                            const filename = `order_${date.replace(/-/g, '')}_${row.DiaryNumber.replace(/\//g, '_')}_${timestamp}.pdf`;
+                            const diarySanitized = String(row.DiaryNumber).replace(/[^\w]+/g, '_');
+                            const caseTypeSanitized = String(row.case_type || '').replace(/[^\w]+/g, '_');
+                            const judgmentDateSanitized = String(row.JudgetmentDate || date || '').replace(/[^0-9]/g, '');
+                            const timePart = new Date().toISOString().slice(11, 19).replace(/:/g, '');
+                            const filename = `HCDEL_${diarySanitized}_${caseTypeSanitized}_${judgmentDateSanitized}_${timePart}.pdf`;
                             const gcsFilename = `high-court-judgement-pdf/${filename}`;
                             
                             const uploadResult = await uploadPDFToGCS(cookies, row.Order.href, gcsFilename);
@@ -299,7 +305,7 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                         console.log(`⏭️ [processPDFAndInsertToDB] Entry exists with PDF path: ${existingEntry.file_path}`);
                     }
                 } else {
-                    console.log(`⏭️ [processPDFAndInsertToDB] Entry exists, no JUDGEMENT to upload`);
+                    console.log(`⏭️ [processPDFAndInsertToDB] Entry exists, no PDF link to upload`);
                 }
             }
             
@@ -332,10 +338,10 @@ async function checkIfEntryExists(dbClient, diaryNumber, caseType, judgmentDate)
         const query = `
             SELECT id, file_path 
             FROM case_management 
-            WHERE diary_number = $1 AND case_type = $2 AND judgment_date = $3
+            WHERE diary_number = $1 AND case_type = $2 AND judgment_date = $3 AND court = 'High Court'
             LIMIT 1
         `;
-        
+    
         const result = await dbClient.query(query, [diaryNumber, caseType, judgmentDate]);
         return result.rows.length > 0 ? result.rows[0] : null;
         
@@ -392,7 +398,7 @@ async function scrapeData(page, date, dbClient) {
     // Process PDF uploads
     const processedResults = await processPDFAndInsertToDB(processedRows, cookies, date, dbClient);
     
-    
+
     return {
         processedResults: processedResults
     };
