@@ -74,6 +74,10 @@ async function insertOrder(dbClient, orderData) {
       )
       RETURNING id;
     `;
+
+    const benchValue = orderData.Bench || orderData.bench || ''; // Use from scraped data or request
+const cityValue = orderData.city || ''; // Use from scraped data or request
+// ...existing code...
     
     const result = await dbClient.query(insertQuery, [
       orderData.SerialNumber || '',                    // serial_number
@@ -81,7 +85,7 @@ async function insertOrder(dbClient, orderData) {
       caseNumber,                                      // case_number
       null,                                            // parties (not available from scraping)
       null,                                            // advocates (not available from scraping)
-      'Principal Bench at Delhi',                      // bench (hardcoded based on scraper)
+       benchValue,                      // bench (hardcoded based on scraper)
       null,                                            // judgment_by (not available from scraping)
       judgmentDate,                                    // judgment_date
       'High Court',                                    // court (hardcoded based on scraper)
@@ -92,7 +96,7 @@ async function insertOrder(dbClient, orderData) {
       filePath,                                        // file_path
       judgmentText,                                    // judgment_text (array)
       caseType,                                        // case_type
-      'Delhi',                                         // city (hardcoded based on scraper)
+      cityValue,                                         // city (hardcoded based on scraper)
       '',                                              // district (hardcoded based on scraper)
       judgmentType                                     // judgment_type (single text field)
     ]);
@@ -167,7 +171,7 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
           caseNumber,                                      // $3 case_number
           null,                                            // $4 parties
           null,                                            // $5 advocates
-          'Principal Bench at Delhi',                      // $6 bench
+           orderData.Bench || orderData.bench || '',                      // $6 bench
           null,                                            // $7 judgment_by
           judgmentDate,                                    // $8 judgment_date
           'High Court',                                    // $9 court
@@ -178,7 +182,7 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
           filePath,                                        // $14 file_path
           judgmentText,                                    // $15 judgment_text
           caseType,                                        // $16 case_type
-          'Delhi',                                         // $17 city
+          orderData.city || '',                                         // $17 city
           '',                                              // $18 district
           judgmentType                                     // $19 judgment_type
         );
