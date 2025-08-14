@@ -146,6 +146,7 @@ async function selectPrincipalBench(page, bench) {
     // Print all available options for debugging
     const benchOptions = await page.$$eval('#court_complex_code option', opts => opts.map(o => ({value: o.value, text: o.textContent})));
     console.log('[debug] Bench dropdown options:', benchOptions);
+    console.log('[debug] Bench dropdown texts:', benchOptions.map(o => o.text));
 
     // Find the value for the specified bench
     const targetBench = benchOptions.find(o => o.text.toLowerCase().includes(bench.toLowerCase()));
