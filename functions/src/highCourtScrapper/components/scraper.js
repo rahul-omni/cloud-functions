@@ -250,7 +250,7 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                         row.Order.gcsPath = filename;
                         row.Order.signedUrl = uploadResult.signedUrl;
                         row.Order.signedUrlExpiresAt = uploadResult.signedUrlExpiresAt;
-                        
+                        console.log("caseTypeSanitized:", caseTypeSanitized);
                         console.log(`✅ [processPDFAndInsertToDB] PDF uploaded: ${filename}`);
                         uploadedCount++;
                         
