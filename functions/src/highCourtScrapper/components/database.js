@@ -35,10 +35,15 @@ async function insertOrder(dbClient, orderData) {
     // Extract case number from diary number if possible
     let caseNumber = null;
     let caseType = null;
+    console.log("orderData:", orderData);
+
+    console.log("orderData CaseType:", orderData.case_type);
+
     if (orderData.case_type) {
       caseType = orderData.case_type;
       caseNumber = orderData.case_type + '/' + orderData.DiaryNumber;
     }
+    console.log("caseType:", caseType);
     
     // Prepare judgment URL array
     const judgmentUrl = orderData.Order?.href ? [orderData.Order.href] : null;
