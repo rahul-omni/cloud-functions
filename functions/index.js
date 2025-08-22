@@ -5,6 +5,8 @@ const { createCaseAndNotify } = require("./src/createCaseAndNotify/index.js");
 const { testFunction } = require("./src/testFunction/index.js");
 const { fetchHighCourtJudgments } = require("./src/highCourtScrapper/index.js");
 const { fetchDistrictCourtJudgments } = require("./src/districtCourtScrapper/index.js");
+const { supremeCourtOTF } = require("./src/supremeCourtScrapper/index.js");
+const { scCauseListScrapper } = require("./src/scCauseListScrapper/index.js");
 
 module.exports = {
   // scrapeSupremeCourtCasesAPI,
@@ -13,5 +15,7 @@ module.exports = {
   createCaseAndNotify,
   testFunction,
   fetchHighCourtJudgments,
-  fetchDistrictCourtJudgments
+  fetchDistrictCourtJudgments,
+  supremeCourtOTF,
+  scCauseListScrapper
 };
