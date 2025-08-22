@@ -1,6 +1,6 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
-const { processWhatsAppNotifications } = require("../notification/processWhatsappNotification");
+const { fetchSupremeCourtCauseList } = require("../scCauseListScrapper/scCauseListScrapper.js");
 
 // Runtime options for the function
 const runtimeOpts = {
@@ -11,20 +11,22 @@ const runtimeOpts = {
 exports.testFunction = regionFunctions.runWith(runtimeOpts).https
     .onRequest(async (req, res) => {
 
-        const now = new Date();
-
+        const listType = req.body.listType
+        const searchBy = req.body.searchBy || 'all_courts'
+        const causelistType = req.body.causelistType || 'misce'
+        const listingDate = req.body.listingDate
+        const mainAndSupplementry = req.body.mainAndSupplementry
+        console.log(req.body)
         try {
 
-            const id = req?.body?.id;
+            console.log("[start] [testFunction] testFunction service started at:", new Date().toISOString());
 
-            console.log("[start] [testFunction] testFunction service started at:", now.toISOString());
-
-            await processWhatsAppNotifications(id);
+            const resData = await fetchSupremeCourtCauseList(listType, searchBy, causelistType, listingDate, mainAndSupplementry);
             
             res.status(200).json({
                 success: true,
                 message: "Test function completed successfully",
-                
+                data: resData
             });
 
         } catch (error) {
@@ -35,6 +37,6 @@ exports.testFunction = regionFunctions.runWith(runtimeOpts).https
                 data: []
             });
         } finally {
-            console.log("[end] [testFunction] testFunction service completed at:", now.toISOString());
+            console.log("[end] [testFunction] testFunction service completed at:", new Date().toISOString());
         }
     });
