@@ -210,6 +210,7 @@ async function transformResults(results) {
     console.log(`[debug] [transformResults] Starting transformation of ${results.length} results`);
     
     const transformedRows = [];
+    let globalSerialNumber = 1; // Global counter for unique serial numbers
     
     results.forEach((result, resultIndex) => {
         console.log(`[debug] [transformResults] Processing result ${resultIndex + 1} with ${result.judgmentLinks?.length || 0} judgment links`);
@@ -219,11 +220,12 @@ async function transformResults(results) {
             console.log(`[debug] [transformResults] Result ${resultIndex + 1} has no judgment links, creating single row`);
             const singleRow = {
                 ...result,
-                
+                serial_number: globalSerialNumber.toString(), // Assign unique serial number
                 judgment_url: [],
                 judgment_text: []
             };
             transformedRows.push(singleRow);
+            globalSerialNumber++; // Increment for next row
             return;
         }
         
@@ -233,6 +235,7 @@ async function transformResults(results) {
             
             const transformedRow = {
                 ...result,
+                serial_number: globalSerialNumber.toString(), // Assign unique serial number
                 // Override judgment_url and judgment_text for this specific link
                 judgment_date: link.text,
                 judgment_url: [link.url],
@@ -243,10 +246,11 @@ async function transformResults(results) {
             delete transformedRow.judgmentLinks;
             
             transformedRows.push(transformedRow);
+            globalSerialNumber++; // Increment for next row
         });
     });
     
-    console.log(`[debug] [transformResults] Transformation completed. Input: ${results.length} results, Output: ${transformedRows.length} rows`);
+    console.log(`[debug] [transformResults] Transformation completed. Input: ${results.length} results, Output: ${transformedRows.length} rows with serial numbers 1 to ${globalSerialNumber - 1}`);
     
     return transformedRows;
 }
