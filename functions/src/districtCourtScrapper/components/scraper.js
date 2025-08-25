@@ -4,7 +4,7 @@ const { bulkInsertOrders } = require('./database');
 
 
 // Handle captcha solving with retries
-async function handleCaptcha(page, captchaRetries = 5) {
+async function handleCaptcha(page, captchaRetries = 10) {
     let success = false;
     
     for (let attempt = 1; attempt <= captchaRetries; attempt++) {
