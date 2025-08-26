@@ -33,10 +33,6 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     const caseYear = body?.caseYear || "";
     const diaryNumber = body?.diaryNumber || "";
 
-    console.log("[info] [supremeCourtOTF] payload body at: diary_number", diaryNumber);
-    console.log("[info] [supremeCourtOTF] payload body at: caseType", caseType);
-    console.log("[info] [supremeCourtOTF] payload body at: caseNumber", caseNumber);
-    console.log("[info] [supremeCourtOTF] payload body at: caseYear", caseYear);
 
     if(!diaryNumber && !(caseType && caseNumber && caseYear)) {
          throw new Error("Case type, case number and case year are required");
