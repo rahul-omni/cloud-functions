@@ -1,4 +1,7 @@
 .env
 pglite-debug.log
 firebase-debug.log
-node_modules
+
+
+# Dependency directories
+node_modules/
