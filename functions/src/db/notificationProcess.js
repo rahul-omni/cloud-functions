@@ -92,10 +92,8 @@ const insert_to_case_management_table = async (data) => {
 
     // Map all cases
     const mappedCases = cases.map(caseData => {
-        // Validate required fields
-
         return {
-            date: now, // timestamp without time zone
+            date: now,
             created_at: now,
             updated_at: now,
             parties: caseData["Petitioner / Respondent"] || '',
@@ -113,75 +111,122 @@ const insert_to_case_management_table = async (data) => {
             case_type: caseData["case_type"] || '',
             city: caseData["city"] || '',
             district: caseData["district"] || '',
-            judgment_type: caseData["judgment_type"] || ''
+            judgment_type: caseData["judgment_type"] || 'Judgment'
         };
     });
 
-    // Create parameterized values string for bulk insert
-    const values = mappedCases.map((_, index) => {
-        const offset = index * 19; // 19 fields excluding id which is auto-generated
-        return `(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19})`;
-    }).join(',');
+    const insertedCases = [];
+    const skippedCases = [];
 
-    // Flatten all values into a single array
-    const flattenedValues = mappedCases.flatMap(caseData => {
-        const values = [
-            caseData.date,
-            caseData.created_at,
-            caseData.updated_at,
-            caseData.parties,
-            caseData.advocates,
-            caseData.bench,
-            caseData.judgment_by,
-            caseData.judgment_date,
-            caseData.judgment_text,
-            caseData.judgment_url,
-            caseData.court,
-            caseData.serial_number,
-            caseData.diary_number,
-            caseData.case_number,
-            caseData.file_path,
-            caseData.case_type,
-            caseData.city,
-            caseData.district,
-            caseData.judgment_type
-        ];
-        return values;
-    });
+    // Process each case individually
+    for (const caseData of mappedCases) {
+        try {
+            // Check if case already exists
+            const checkQuery = `
+                SELECT id FROM case_management 
+                WHERE diary_number = $1 
+                AND case_number = $2 
+                AND court = $3 
+                AND judgment_date = $4
+            `;
+            
+            const checkResult = await db.query(checkQuery, [
+                caseData.diary_number,
+                caseData.case_number,
+                caseData.court,
+                caseData.judgment_date
+            ]);
 
-    const query = `
-        WITH inserted_cases AS (
-            INSERT INTO case_management (
-                id,
-                date,
-                created_at,
-                updated_at,
-                parties,
-                advocates,
-                bench,
-                judgment_by,
-                judgment_date,
-                judgment_text,
-                judgment_url,
-                court,
-                serial_number,
-                diary_number,
-                case_number,
-                file_path,
-                case_type,
-                city,
-                district,
-                judgment_type
-            ) VALUES ${values}
-            RETURNING diary_number, court, city, district
-        )
+            if (checkResult.rows.length > 0) {
+                console.log(`[info] [insert_to_case_management_table] Case already exists: ${caseData.diary_number} - ${caseData.case_number}`);
+                skippedCases.push({
+                    diary_number: caseData.diary_number,
+                    case_number: caseData.case_number,
+                    reason: 'Already exists'
+                });
+                continue;
+            }
+
+            // Insert new case
+            const insertQuery = `
+                INSERT INTO case_management (
+                    id,
+                    date,
+                    created_at,
+                    updated_at,
+                    parties,
+                    advocates,
+                    bench,
+                    judgment_by,
+                    judgment_date,
+                    judgment_text,
+                    judgment_url,
+                    court,
+                    serial_number,
+                    diary_number,
+                    case_number,
+                    file_path,
+                    case_type,
+                    city,
+                    district,
+                    judgment_type
+                ) VALUES (
+                    gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+                )
+                RETURNING diary_number, court, city, district
+            `;
+
+            const insertResult = await db.query(insertQuery, [
+                caseData.date,
+                caseData.created_at,
+                caseData.updated_at,
+                caseData.parties,
+                caseData.advocates,
+                caseData.bench,
+                caseData.judgment_by,
+                caseData.judgment_date,
+                caseData.judgment_text,
+                caseData.judgment_url,
+                caseData.court,
+                caseData.serial_number,
+                caseData.diary_number,
+                caseData.case_number,
+                caseData.file_path,
+                caseData.case_type,
+                caseData.city,
+                caseData.district,
+                caseData.judgment_type
+            ]);
+
+            insertedCases.push(insertResult.rows[0]);
+            console.log(`[info] [insert_to_case_management_table] Inserted new case: ${caseData.diary_number} - ${caseData.case_number}`);
+
+        } catch (error) {
+            console.error(`[error] [insert_to_case_management_table] Failed to process case ${caseData.diary_number}:`, error);
+            skippedCases.push({
+                diary_number: caseData.diary_number,
+                case_number: caseData.case_number,
+                reason: `Error: ${error.message}`
+            });
+        }
+    }
+
+    // If no cases were inserted, return early
+    if (insertedCases.length === 0) {
+        console.log("[info] [insert_to_case_management_table] No new cases to insert");
+        return [];
+    }
+
+    // Get notification data for inserted cases
+    const notificationQuery = `
         SELECT 
             ic.diary_number,
             uc.user_id,
             u.email,
             u.country_code,
             u.mobile_number
-        FROM inserted_cases ic
+        FROM (VALUES ${insertedCases.map((_, index) => `($${index * 3 + 1}, $${index * 3 + 2}, $${index * 3 + 3})`).join(',')}) 
+        AS ic(diary_number, court, city)
         JOIN user_cases uc ON ic.diary_number = uc.diary_number 
             AND ic.court = uc.court 
             AND (
@@ -190,8 +235,17 @@ const insert_to_case_management_table = async (data) => {
             )
         JOIN users u ON u.id = uc.user_id`;
 
-    const result = await db.query(query, flattenedValues);
+    const notificationValues = insertedCases.flatMap(caseData => [
+        caseData.diary_number,
+        caseData.court,
+        caseData.city
+    ]);
+
+    const result = await db.query(notificationQuery, notificationValues);
+    
+    console.log(`[info] [insert_to_case_management_table] Inserted ${insertedCases.length} cases, skipped ${skippedCases.length} cases`);
     console.log("[info] [insert_to_case_management_table] Result from case management table");
+    
     return result.rows;
 }
 
