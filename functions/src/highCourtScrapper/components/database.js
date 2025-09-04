@@ -24,16 +24,26 @@ async function connectToDatabase() {
 async function insertOrder(dbClient, orderData) {
 
   try {
+    const benchValue = orderData.Bench || orderData.bench || orderData.requestBench || '';
+    if (!benchValue.trim()) {
+      console.log(`⏭️  Skipping insert for ${orderData.DiaryNumber} - bench missing`);
+      return null;
+    }
     // Keep judgment date in dd-mm-yyyy format for database
     let judgmentDate = orderData.JudgetmentDate || null;
     
     // Extract case number from diary number if possible
     let caseNumber = null;
     let caseType = null;
+    console.log("orderData:", orderData);
+
+    console.log("orderData CaseType:", orderData.case_type);
+
     if (orderData.case_type) {
       caseType = orderData.case_type;
       caseNumber = orderData.case_type + '/' + orderData.DiaryNumber;
     }
+    console.log("caseType:", caseType);
     
     // Prepare judgment URL array
     const judgmentUrl = orderData.Order?.href ? [orderData.Order.href] : null;
@@ -74,14 +84,21 @@ async function insertOrder(dbClient, orderData) {
       )
       RETURNING id;
     `;
-    
+
+    const cityValue = orderData.city || ''; // Use from scraped data or request
+// ...existing code...
+     console.log("benchValue:", benchValue);
+     console.log("cityValue:", cityValue);
+     console.log("caseType:", caseType);
+     console.log("judgmentType:", judgmentType);
+
     const result = await dbClient.query(insertQuery, [
       orderData.SerialNumber || '',                    // serial_number
       orderData.DiaryNumber || '',                     // diary_number
       caseNumber,                                      // case_number
       null,                                            // parties (not available from scraping)
       null,                                            // advocates (not available from scraping)
-      'Principal Bench at Delhi',                      // bench (hardcoded based on scraper)
+       benchValue,                      // bench (hardcoded based on scraper)
       null,                                            // judgment_by (not available from scraping)
       judgmentDate,                                    // judgment_date
       'High Court',                                    // court (hardcoded based on scraper)
@@ -92,7 +109,7 @@ async function insertOrder(dbClient, orderData) {
       filePath,                                        // file_path
       judgmentText,                                    // judgment_text (array)
       caseType,                                        // case_type
-      'Delhi',                                         // city (hardcoded based on scraper)
+      cityValue,                                         // city (hardcoded based on scraper)
       '',                                              // district (hardcoded based on scraper)
       judgmentType                                     // judgment_type (single text field)
     ]);
@@ -104,27 +121,30 @@ async function insertOrder(dbClient, orderData) {
   }
 }
 
-// Bulk insert orders into database
+
+
 async function bulkInsertOrders(client, ordersData, batchSize = 100) {
+  const filteredOrders = ordersData.filter(order =>
+    (order.Bench || order.bench || order.requestBench || '').trim() !== ''
+  );
   if (!client) {
     console.log('⚠️  Database client not available, skipping bulk insertion');
     return { totalInserted: 0, totalBatches: 0, errors: [] };
   }
-
-  if (!ordersData || ordersData.length === 0) {
-    console.log('⚠️  No orders to insert');
+  if (!filteredOrders || filteredOrders.length === 0) {
+    console.log('⚠️  No valid orders to insert (bench missing)');
     return { totalInserted: 0, totalBatches: 0, errors: [] };
   }
 
-  console.log(`📦  Starting bulk insert for ${ordersData.length} orders in batches of ${batchSize}`);
-  
+  console.log(`📦  Starting bulk insert for ${filteredOrders.length} orders in batches of ${batchSize}`);
+
   const batches = [];
   const errors = [];
   let totalInserted = 0;
 
-  // Split orders into batches
-  for (let i = 0; i < ordersData.length; i += batchSize) {
-    batches.push(ordersData.slice(i, i + batchSize));
+  // Split filteredOrders into batches
+  for (let i = 0; i < filteredOrders.length; i += batchSize) {
+    batches.push(filteredOrders.slice(i, i + batchSize));
   }
 
   console.log(`📋  Processing ${batches.length} batches...`);
@@ -133,58 +153,49 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
   for (const [batchIndex, batch] of batches.entries()) {
     try {
       console.log(`📦  Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} orders)...`);
-      
-      // Prepare data for this batch
+
       const values = [];
       const placeholders = [];
-      
+
       batch.forEach((orderData, orderIndex) => {
-        // Parse judgment date - keep in dd-mm-yyyy format
         let judgmentDate = orderData.JudgetmentDate || null;
-        
-        // Extract case number and type
         let caseNumber = null;
         let caseType = null;
         if (orderData.case_type) {
           caseType = orderData.case_type;
           caseNumber = orderData.case_type + '/' + orderData.DiaryNumber;
         }
-        
-        // Prepare URLs and file paths
         const judgmentUrl = orderData.Order?.href ? [orderData.Order.href] : null;
         const judgmentText = null;
         const judgmentType = orderData.Order?.text || null;
         const filePath = orderData.Order?.gcsPath || null;
-        
-        // Calculate parameter positions for this order (19 parameters per order)
+
         const offset = orderIndex * 19;
         placeholders.push(`(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19})`);
-        
-        // Add values for this order
+
         values.push(
-          orderData.SerialNumber || '',                    // $1 serial_number
-          orderData.DiaryNumber || '',                     // $2 diary_number
-          caseNumber,                                      // $3 case_number
-          null,                                            // $4 parties
-          null,                                            // $5 advocates
-          'Principal Bench at Delhi',                      // $6 bench
-          null,                                            // $7 judgment_by
-          judgmentDate,                                    // $8 judgment_date
-          'High Court',                                    // $9 court
-          new Date().toISOString(),                        // $10 date
-          new Date().toISOString(),                        // $11 created_at
-          new Date().toISOString(),                        // $12 updated_at
-          judgmentUrl,                                     // $13 judgment_url
-          filePath,                                        // $14 file_path
-          judgmentText,                                    // $15 judgment_text
-          caseType,                                        // $16 case_type
-          'Delhi',                                         // $17 city
-          '',                                              // $18 district
-          judgmentType                                     // $19 judgment_type
+          orderData.SerialNumber || '',
+          orderData.DiaryNumber || '',
+          caseNumber,
+          null,
+          null,
+          orderData.Bench || orderData.bench || '',
+          null,
+          judgmentDate,
+          'High Court',
+          new Date().toISOString(),
+          new Date().toISOString(),
+          new Date().toISOString(),
+          judgmentUrl,
+          filePath,
+          judgmentText,
+          caseType,
+          orderData.city || '',
+          '',
+          judgmentType
         );
       });
 
-      // Build the bulk INSERT query
       const insertQuery = `
         INSERT INTO case_management (
           id,
@@ -211,24 +222,22 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
         RETURNING id;
       `;
 
-      // Execute the batch insert within a transaction
       await client.query('BEGIN');
       const result = await client.query(insertQuery, values);
       await client.query('COMMIT');
-      
+
       const insertedCount = result.rows.length;
       totalInserted += insertedCount;
-      
+
       console.log(`✅  Batch ${batchIndex + 1}/${batches.length} completed - inserted ${insertedCount} orders`);
-      
+
     } catch (error) {
-      // Rollback transaction on error
       try {
         await client.query('ROLLBACK');
       } catch (rollbackError) {
         console.error('❌  Rollback failed:', rollbackError.message);
       }
-      
+
       console.error(`❌  Batch ${batchIndex + 1}/${batches.length} failed:`, error.message);
       errors.push({
         batchIndex: batchIndex + 1,
@@ -236,7 +245,7 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
         error: error.message,
         orders: batch.map(order => `${order.DiaryNumber} (${order.case_type})`)
       });
-      
+
       // Optional: Try individual inserts for failed batch
       console.log(`🔄  Attempting individual inserts for failed batch ${batchIndex + 1}...`);
       for (const orderData of batch) {
@@ -251,7 +260,6 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
     }
   }
 
-  // Summary
   const summary = {
     totalInserted,
     totalBatches: batches.length,
@@ -261,12 +269,12 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
   };
 
   console.log(`\n📊  Bulk Insert Summary:`);
-  console.log(`   Total orders processed: ${ordersData.length}`);
+  console.log(`   Total orders processed: ${filteredOrders.length}`);
   console.log(`   Total batches: ${summary.totalBatches}`);
   console.log(`   Successful batches: ${summary.successfulBatches}`);
   console.log(`   Failed batches: ${summary.failedBatches}`);
   console.log(`   Total orders inserted: ${summary.totalInserted}`);
-  
+
   if (errors.length > 0) {
     console.log(`\n❌  Failed Batches Details:`);
     errors.forEach((error, index) => {
