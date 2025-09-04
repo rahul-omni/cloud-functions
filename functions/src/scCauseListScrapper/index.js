@@ -1,7 +1,7 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
 const { fetchSupremeCourtCauseList } = require('./scCauseListScrapper');
-
+const { insertCauselist } = require('./components/db');
 // Runtime options for the function
 const runtimeOpts = {
   timeoutSeconds: 540,
@@ -16,32 +16,60 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
 
   console.log("[start] [scCauseListScrapper] scraper service started at:", new Date().toISOString());
 
-  let dbClient = null;
 
+  const date = new Date();
+  const formattedDate = date.toISOString().split('T')[0];
   try {
-    // Get date from request or use current date
-    const listType = req?.body?.listType || "";
-    const searchBy = req?.body?.searchBy || "all_courts";
-    const causelistType = req?.body?.causelistType || "";
-    const listingDate = req?.body?.listingDate || "";
-    const mainAndSupplementry = req?.body?.mainAndSupplementry || "";
-
-
-      
+    // Get date from request
+    const listType = req?.body?.listType || "daily";
+    const searchBy = req?.body?.searchBy || "court";
+    const causelistType = req?.body?.causelistType || "Miscellaneous List";
+    const listingDate = req?.body?.listingDate || formattedDate;
+    const mainAndSupplementry = req?.body?.mainAndSupplementry || "Both";
     
     let results = [];
 
-    // Scrape the cases for supreme court and high court
+    // Create form data object for the new flexible structure
+    const formData = {
+      listType,
+      searchBy,
+      causelistType,
+      listingDate,
+      mainAndSupplementry,
+      // Add conditional fields based on searchBy
+      ...(searchBy === 'court' && { court: req?.body?.court }),
+      ...(searchBy === 'judge' && { judge: req?.body?.judge }),
+      ...(searchBy === 'aor_code' && { aorCode: req?.body?.aorCode }),
+      ...(searchBy === 'party_name' && { partyName: req?.body?.partyName }),
+      // Add date range fields if provided
+      ...(req?.body?.listingDateFrom && { listingDateFrom: req?.body?.listingDateFrom }),
+      ...(req?.body?.listingDateTo && { listingDateTo: req?.body?.listingDateTo })
+    };
 
-    results = await fetchSupremeCourtCauseList(listType, searchBy, causelistType, listingDate, mainAndSupplementry);
+    console.log("[debug] [scCauseListScrapper] Form data:", formData);
 
+    results = await fetchSupremeCourtCauseList(formData);
 
-    
-    res.status(200).json({
-      success: true,
-      message: "Cron job completed successfully",
-      data: results
-    });
+    if(results.length === 0) {
+       return res.status(200).json({
+        success: true,
+        message: "No results found",
+        data: []
+       });
+    } else {
+      const { inserted, skipped, errors } = await insertCauselist(results);
+      console.log("[debug] [scCauseListScrapper] Inserted:", inserted);
+      console.log("[debug] [scCauseListScrapper] Errors:", errors);
+      console.log("[debug] [scCauseListScrapper] Skipped:", skipped);
+      return res.status(200).json({
+        success: true,
+        message: "Cron job completed successfully",
+        data: results,
+        inserted,
+        skipped,
+        errors,
+      });
+    }
 
   } catch (error) {
     console.error('[error] [scCauseListScrapper] Error during scraping service: ', error);
