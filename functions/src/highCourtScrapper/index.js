@@ -18,18 +18,31 @@ exports.fetchHighCourtJudgments = regionFunctions.runWith(runtimeOpts).https
       const date = req.body?.date || new Date().toISOString().split('T')[0];
       const diaryNumber = req.body?.diaryNumber;
       const highCourtname = req.body?.highCourt;
-      const bench = req.body?.bench;
-      const caseTypeValue = req.body?.caseTypeValue;
+    //   const bench = req.body?.bench;
+    //   const caseTypeValue = req.body?.caseTypeValue;
 
-      if (!highCourtname && !bench) {
+    const benches = Array.isArray(req.body?.bench) ? req.body.bench : [req.body?.bench];
+const caseTypes = Array.isArray(req.body?.caseTypeValue) ? req.body.caseTypeValue : [req.body?.caseTypeValue];
+
+
+      if (!highCourtname && !benches.length ===0) {
         throw new Error('High Court and Bench are required');
       }
 
-      if(!date || (!diaryNumber && !caseTypeValue)) {
+      if(!date || (!diaryNumber && caseTypes.length === 0)) {
         throw new Error('Date or Diary Number and Case Type are required');
       }
 
-      result = await HighCourtJudgmentsScrapper(date, diaryNumber, highCourtname, bench, caseTypeValue);
+      
+let allResults = [];
+for (const b of benches) {
+  for (const ct of caseTypes) {
+    const results = await HighCourtJudgmentsScrapper(date, diaryNumber, highCourtname, b, ct);
+    allResults = allResults.concat(results);
+  }
+}
+result = allResults;
+// ...existing code.
 
     } catch (error) {
       console.error('❌  Error:', error.message);
