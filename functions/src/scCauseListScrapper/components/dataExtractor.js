@@ -62,19 +62,26 @@ const extractTableData = async (page) => {
         }
       });
       
-      // Extract links to cause list files
-      const links = tr.querySelectorAll('a[href*=".pdf" i]');
-      console.log(`[debug] [page] Row ${index + 1} has ${links.length} PDF links`);
+      // Extract links to cause list files from the File column
+      const fileCell = tr.querySelector('td[data-th="File"]');
+      let causeListLinks = [];
       
-      obj.causeListLinks = Array.from(links, (a, linkIndex) => {
-        const linkData = { 
-          text: a.textContent.trim(), 
-          url: a.href,
-          filename: a.href.split('/').pop() || a.href
-        };
-        console.log(`[debug] [page] Link ${linkIndex + 1}: ${linkData.text} -> ${linkData.filename}`);
-        return linkData;
-      });
+      if (fileCell) {
+        const links = fileCell.querySelectorAll('a[href*=".pdf" i]');
+        console.log(`[debug] [page] Row ${index + 1} has ${links.length} PDF links in File column`);
+        
+        causeListLinks = Array.from(links, (a, linkIndex) => {
+          const linkData = { 
+            text: a.textContent.trim(), 
+            url: a.href,
+            filename: a.href.split('/').pop() || a.href
+          };
+          console.log(`[debug] [page] Link ${linkIndex + 1}: ${linkData.text} -> ${linkData.filename}`);
+          return linkData;
+        });
+      }
+      
+      obj.causeListLinks = causeListLinks;
       
       // Add row ID if available
       if (tr.id) {
@@ -86,14 +93,10 @@ const extractTableData = async (page) => {
       return obj;
     })
     .filter(row => {
-      // Filter out rows that don't have essential case information
+      // Filter out rows that don't have Serial Number
       const hasSerialNumber = row["Serial Number"] && row["Serial Number"].trim();
-      // const hasCaseNumber = row["Case Number"] && row["Case Number"].trim();
-      // const hasPetitioner = row["Petitioner / Respondent"] && row["Petitioner / Respondent"].trim();
       
-      // Only include rows that have at least serial number and case number
-      // This helps filter out header rows, section dividers, and IA rows
-      // return hasSerialNumber && hasCaseNumber && hasPetitioner;
+      // Only include rows that have serial number
       return hasSerialNumber;
     });
   });
