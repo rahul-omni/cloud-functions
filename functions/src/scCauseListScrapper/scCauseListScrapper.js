@@ -41,10 +41,12 @@ const fetchSupremeCourtCauseList = async (formData) => {
     await waitForResults(page);
     const rows = await extractTableData(page);
     
-    // Transform data for database
-    const transformedRows = transformData(rows, formData);
+    // // Transform data for database
+    // const transformedRows = transformData(rows, formData);
 
-    return transformedRows;
+    // return transformedRows;
+
+    return rows;
 
 
     } catch (error) {

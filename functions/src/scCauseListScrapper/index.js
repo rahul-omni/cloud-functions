@@ -1,7 +1,8 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
 const { fetchSupremeCourtCauseList } = require('./scCauseListScrapper');
-const { insertCauselist } = require('./components/db');
+const { insertCauselistFiles } = require('./components/db');
+const { pdfScrapperCauseList } = require('./pdfScrapperCauseList');
 // Runtime options for the function
 const runtimeOpts = {
   timeoutSeconds: 540,
@@ -57,17 +58,43 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
         data: []
        });
     } else {
-      const { inserted, skipped, errors } = await insertCauselist(results);
-      console.log("[debug] [scCauseListScrapper] Inserted:", inserted);
-      console.log("[debug] [scCauseListScrapper] Errors:", errors);
-      console.log("[debug] [scCauseListScrapper] Skipped:", skipped);
+      // Extract PDF content for each PDF link found
+      const pdfExtractionResults = [];
+    
+      for (const row of results) {
+        if (row.causeListLinks && row.causeListLinks.length > 0) {
+          console.log(`[debug] [scCauseListScrapper] Processing PDF: ${row.causeListLinks[0].url}`);
+          
+          const pdfResult = await pdfScrapperCauseList(row.causeListLinks[0].url);
+          pdfExtractionResults.push({
+            serialNumber: row["Serial Number"],
+            file: row["File"],
+            pdfResult: pdfResult
+          });
+        }
+      }
+      // if (results[0].causeListLinks && results[0].causeListLinks.length > 0) {
+      //       console.log(`[debug] [scCauseListScrapper] Processing PDF: ${results[0].causeListLinks[0].url}`);
+            
+      //       const pdfResult = await pdfScrapperCauseList(results[0].causeListLinks[0].url);
+      //       pdfExtractionResults.push({
+      //         serialNumber: results[0]["Serial Number"],
+      //         file: results[0]["File"],
+      //         pdfResult: pdfResult
+      //       });
+      //     }
+
+      
+      // const { inserted, skipped, errors } = await insertCauselistFiles(results, formData);
+      // console.log("[debug] [scCauseListScrapper] Inserted:", inserted);
+      // console.log("[debug] [scCauseListScrapper] Errors:", errors);
+      // console.log("[debug] [scCauseListScrapper] Skipped:", skipped);
+      
       return res.status(200).json({
         success: true,
         message: "Cron job completed successfully",
-        data: results,
-        inserted,
-        skipped,
-        errors,
+        pdfExtractionResults: pdfExtractionResults,
+        // dbResult: { inserted, skipped, errors }
       });
     }
 
