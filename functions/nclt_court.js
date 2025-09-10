@@ -11,7 +11,10 @@
     //     diary_number:   "31", //"85",
     //     year: "2024" ,// "2014"
     // };
-    
+require('dotenv').config({ path: '../.env' });
+const apiKey = process.env.OPENAI_API_KEY;
+console.log('✅ OpenAI API key loaded:', apiKey);
+
 const { NCLTCourtJudgmentsScrapper } = require('./src/ncltCourtScrapper/ncltCourtScrapper.js');
 
 async function testNCLTWithRealPayload() {
@@ -56,7 +59,7 @@ async function testNCLTWithRealPayload() {
      const testPayload = {
         bench: "kolkata",
         case_type:  "CP(AA) Merger and Amalgamation(Companies Act)", 
-        diary_number:   "311", //"85",
+        diary_number:   "31", //"85",
         year: "2024" ,// "2014"
     };
     // const testPayload = {
