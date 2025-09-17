@@ -38,14 +38,14 @@ function transformRowData(row, date) {
         "Case Number": row.case_type ? `${row.case_type}/${row.DiaryNumber}` : '',
         "Petitioner / Respondent": '', // Not available from high court scraping
         "Petitioner/Respondent Advocate": '', // Not available from high court scraping
-        "Bench": "Principal Bench at Delhi",
+        "Bench": row.bench || row.Bench || '', // From scraping, e.g., "Principal Bench at Delhi"
         "Judgment By": '', // Not available from high court scraping
         "Judgment": row.Order?.text || '',
         "judgmentLinks": row.Order?.href ? [{ text: row.Order.text, url: row.Order.href }] : [],
         "file_path": row.Order?.gcsPath || '',
         "insert_to_chromadb": false,
         "case_type": row.case_type || '',
-        "city": "Delhi",
+        "city": row.city,
         "district": "",
         "judgment_type": row.Order?.text || "",
         "date": new Date().toISOString(), // Required timestamp
