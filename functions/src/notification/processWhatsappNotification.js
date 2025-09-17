@@ -5,6 +5,7 @@ const { accessWhatsappSecretVersion } = require('../config/secretManager');
 // WhatsApp Configuration
 const WHATSAPP_API_URL = functions.config().environment.whatsapp_api_url;
 const WHATSAPP_PHONE_NUMBER_ID = functions.config().environment.whatsapp_phone_number_id;
+const TOKEN = functions.config().environment.whatsapp_token;
 
 const getWhatsAppToken = async () => {
   try {
@@ -48,15 +49,15 @@ const processWhatsAppNotifications = async (id) => {
 
     let formattedPhone = notification.contact.replace(/\D/g, ''); // Remove all non-digit characters
 
-    // Add + if missing (but has country code)
-    if (!formattedPhone.startsWith('+')) {
-      // If starts with country code (91, 92, etc.)
-      if (formattedPhone.match(/^[1-9]\d{9,14}$/)) {
-        formattedPhone = '+' + formattedPhone;
-      } else {
-        throw new Error('Phone number must include country code (e.g. 919991910535 or +919991910535)');
-      }
-    }
+    // // Add + if missing (but has country code)
+    // if (!formattedPhone.startsWith('+')) {
+    //   // If starts with country code (91, 92, etc.)
+    //   if (formattedPhone.match(/^[1-9]\d{9,14}$/)) {
+    //     formattedPhone = '+' + formattedPhone;
+    //   } else {
+    //     throw new Error('Phone number must include country code (e.g. 919991910535 or +919991910535)');
+    //   }
+    // }
 
     try {
       // Simulate sending WhatsApp message
@@ -76,9 +77,7 @@ const processWhatsAppNotifications = async (id) => {
       const apiUrl = WHATSAPP_API_URL.replace(/\/+$/, '');
       const endpoint = `${apiUrl}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
-      const token = await getWhatsAppToken();
-
-  
+      const token = TOKEN;
 
        // Make the API request
       const response = await fetch(endpoint, {
