@@ -641,12 +641,15 @@ async function checkForResults(page) {
                              bodyText.includes('cp(ib)') ||
                              hasTable;
             
-            // Check for no results messages
+            // Check for no results messages - Enhanced detection
             const hasNoResultsMessage = bodyText.includes('no records found') ||
                                        bodyText.includes('no data found') ||
                                        bodyText.includes('record not found') ||
                                        bodyText.includes('no results') ||
-                                       bodyText.includes('no cases found');
+                                       bodyText.includes('no cases found') ||
+                                       bodyText.includes('no data available') ||
+                                       bodyText.includes('please click here for data prior to') ||
+                                       bodyText.includes('data prior to 31 august,2021');
             
             // Count potential data rows
             let dataRowCount = 0;
@@ -730,9 +733,10 @@ async function checkForResults(page) {
         
         if (resultCheck.hasNoResultsMessage) {
             return {
-                success: true,
+                success: false,
                 hasResults: false,
-                message: 'No records found for search criteria'
+                message: 'This case number or diary number does not exist. Please check and try again.',
+                errorType: 'NO_CASE_FOUND'
             };
         }
         
@@ -869,6 +873,8 @@ async function extractTableData(page) {
                                 !text.toLowerCase().includes('filing no.') &&
                                 !text.toLowerCase().includes('case no') &&
                                 !text.toLowerCase().includes('petitioner vs') &&
+                                !text.toLowerCase().includes('please click here') &&
+                                !text.toLowerCase().includes('data prior to') &&
                                 text !== '-' && text !== ''
                             );
                             

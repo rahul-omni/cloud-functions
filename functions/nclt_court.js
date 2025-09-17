@@ -56,18 +56,18 @@ async function testNCLTWithRealPayload() {
     //     diary_number:   "8", //"85",
     //     year: "2016" ,// "2014"
     // };
-     const testPayload = {
-        bench: "kolkata",
-        case_type:  "CP(AA) Merger and Amalgamation(Companies Act)", 
-        diary_number:   "31", //"85",
-        year: "2024" ,// "2014"
-    };
-    // const testPayload = {
-    //     bench: "jaipur",
-    //     case_type:  "Transfer Petition(Companies Act)", 
-    //     diary_number:   "1", //"85",
-    //     year: "2023" ,// "2014"
+    //  const testPayload = {
+    //     bench: "kolkata",
+    //     case_type:  "CP(AA) Merger and Amalgamation(Companies Act)", 
+    //     diary_number:   "3111", // Valid case number that we know works
+    //     year: "2024" ,// "2014"
     // };
+    const testPayload = {
+        bench: "jaipur",
+        case_type:  "Transfer Petition(Companies Act)", 
+        diary_number:   "1200", //"85",
+        year: "2023" ,// "2014"
+    };
     //  const testPayload = {
     //     bench: "jaipur",
     //     case_type:  "Company Petition (Companies Act)", 

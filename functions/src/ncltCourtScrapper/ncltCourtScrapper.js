@@ -416,21 +416,49 @@ const NCLTCourtJudgmentsScrapper = async (searchParams) => {
     console.log('[step 5] Checking for search results...');
     const resultCheck = await checkForResults(page);
     
+    // Handle NO_CASE_FOUND error type first
+    if (resultCheck.errorType === 'NO_CASE_FOUND') {
+        console.log('[result] No NCLT records found - case does not exist');
+        return {
+            success: false,
+            message: resultCheck.message || 'This case number or diary number does not exist. Please check and try again.',
+            errorType: 'NO_CASE_FOUND',
+            court_name: 'Nclt Court',
+            search_parameters: {
+                bench: bench,
+                case_type: caseType,
+                diary_number: `${diaryNumber}/${year}`,
+                year: year,
+                search_timestamp: new Date().toISOString()
+            },
+            total_records: 0,
+            data: [],
+            judgments: []
+        };
+    }
+    
     if (!resultCheck.success) {
-        throw new Error(`Failed to check results: ${resultCheck.error}`);
+        throw new Error(`Failed to check results: ${resultCheck.error || 'Unknown error'}`);
     }
 
     if (!resultCheck.hasResults) {
         console.log('[result] No NCLT records found for search criteria');
+        
         return {
-            success: true,
-            message: resultCheck.message || 'No records found',
+            success: false,
+            message: 'No NCLT records found for the given search criteria',
             totalRecords: 0,
             data: [],
-            bench,
-            caseType,
-            diaryNumber: diaryNumber,
-            year
+            errorType: 'NO_CASE_FOUND',
+            court_name: 'Nclt Court',
+            search_parameters: {
+                bench: bench,
+                case_type: caseType,
+                diary_number: `${diaryNumber}/${year}`,
+                year: year,
+                search_timestamp: new Date().toISOString()
+            },
+            judgments: []
         };
     }
 
