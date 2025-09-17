@@ -4,4 +4,33 @@ firebase-debug.log
 
 
 # Dependency directories
+functions/node_modules/
+# Dependency directories
 node_modules/
+*/node_modules/
+
+# Production builds
+dist/
+build/
+.output/
+
+# Runtime data
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Firebase specific
+.firebase/
+.firebaserc
