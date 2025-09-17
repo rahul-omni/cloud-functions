@@ -1,8 +1,6 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
 const { fetchSupremeCourtCauseList } = require('./scCauseListScrapper');
-<<<<<<< HEAD
-=======
 const { getSubscribedCases, insertNotifications } = require('./components/db');
 const pdfParse = require("pdf-parse");
 const axios = require('axios');
@@ -12,7 +10,6 @@ const { Storage } = require('@google-cloud/storage');
 // Create storage client
 const storage = new Storage();
 const bucketName = "causelistpdflinks"; // 🔹 Replace with your bucket name
->>>>>>> 3434e5eae763eccb797906be171a79dfe99431eb
 
 // Runtime options for the function
 const runtimeOpts = {
@@ -26,50 +23,6 @@ const runtimeOpts = {
 exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
   .onRequest(async (req, res) => {
 
-<<<<<<< HEAD
-  console.log("[start] [scCauseListScrapper] scraper service started at:", new Date().toISOString());
-
-  let dbClient = null;
-
-  try {
-    // Get date from request or use current date
-    const listType = req?.body?.listType || "";
-    const searchBy = req?.body?.searchBy || "all_courts";
-    const causelistType = req?.body?.causelistType || "";
-    const listingDate = req?.body?.listingDate || "";
-    const mainAndSupplementry = req?.body?.mainAndSupplementry || "";
-
-
-      
-    
-    let results = [];
-
-    // Scrape the cases for supreme court and high court
-
-    results = await fetchSupremeCourtCauseList(listType, searchBy, causelistType, listingDate, mainAndSupplementry);
-
-
-    
-    res.status(200).json({
-      success: true,
-      message: "Cron job completed successfully",
-      data: results
-    });
-
-  } catch (error) {
-    console.error('[error] [scCauseListScrapper] Error during scraping service: ', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  } finally {
-    console.log("[end] [scCauseListScrapper] scraper service ended at:", new Date().toISOString());
-    
-  }
-  
-});
-
-=======
     console.log("[start] [scCauseListScrapper] scraper service started at:", new Date().toISOString());
 
     const date = new Date();
@@ -177,4 +130,3 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
       console.log("[end] [scCauseListScrapper] scraper service ended at:", new Date().toISOString());
     }
   });
->>>>>>> 3434e5eae763eccb797906be171a79dfe99431eb
