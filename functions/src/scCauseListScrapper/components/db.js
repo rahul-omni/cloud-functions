@@ -178,9 +178,67 @@ const insertCauselist = async (results) => {
   return { inserted, skipped, errors };
 }
 
+const getSubscribedCases = async () => {
+  const sql = `
+    UPDATE user_cases uc
+    SET updated_at = NOW()
+    FROM users u
+    WHERE uc.user_id = u.id
+      AND (uc.updated_at::date <> CURRENT_DATE)
+      AND court = 'Supreme Court'
+    RETURNING 
+      u.id as user_id,
+      uc.case_number, 
+      u.email,
+      uc.diary_number,
+      u.mobile_number,
+      uc.updated_at;
+  `;
+
+  const { rows } = await db.query(sql);
+  return rows;
+};
+
+const insertNotifications = async (diary_number, user_id, method, contact, message) => {
+  const sql = `
+    INSERT INTO notifications (
+      id,
+      dairy_number,
+      user_id,
+      method,
+      contact,
+      message,
+      status,
+      created_at
+    ) VALUES (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      CURRENT_TIMESTAMP
+    )
+    RETURNING id, method;
+  `;
+
+  const values = [
+    diary_number,
+    user_id,
+    method,
+    contact,
+    message,
+    'pending'
+  ];
+
+  const result = await db.query(sql, values);
+  return result.rows[0];
+};
 
 module.exports = {
   insertCauselist,
-  insertCauselistFiles
-  
+  insertCauselistFiles,
+  getSubscribedCases,
+  insertNotifications
 };
