@@ -34,3 +34,5 @@ Thumbs.db
 # Firebase specific
 .firebase/
 .firebaserc
+*/package-lock.json
+package-lock.json

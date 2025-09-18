@@ -94,28 +94,11 @@ const insertCauselist = async (results) => {
   const insertSql = `
     INSERT INTO cause_list (
       id,
-      serial_number,
-      dairy_number,
-      case_number,
-      full_case_number,
-      parties,
-      advocates,
-      city,
-      court,
-      district,
-      date,
-      search_by,
-      list_type,
-      cause_list_type,
-      main_and_supply,
-      court_no,
-      aor_code,
-      judge_name,
-      party_name,
-      created_at,
-      updated_at
+      user_id,
+      case_id,
+      created_at
     ) VALUES (
-      gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW()
+      gen_random_uuid(), $1, $2, NOW()
     ) RETURNING id`;
 
   let inserted = 0;
@@ -124,48 +107,11 @@ const insertCauselist = async (results) => {
 
   for (const row of results) {
     const params = [
-      row?.serialNumber ?? '',                  // $1  serial_number
-      row?.diaryNumber ?? '',                   // $2  dairy_number (schema uses "dairy_number")
-      row?.caseNumber ?? '',                    // $3  case_number
-      row?.fullCaseNumber ?? '',                // $4  full_case_number
-      row?.parties ?? '',                       // $5  parties
-      row?.advocates ?? '',                     // $6  advocates
-      row?.city ?? '',                        // $7  city
-      row?.court ?? '',                         // $8  court
-      row?.district ??  '',                    // $9  district
-      row?.date ?? '',                          // $10 date
-      row?.searchBy ?? '',                      // $11 search_by
-      row?.ListType ?? '',                      // $12 list_type
-      row?.causelistType ?? '',                 // $13 cause_list_type
-      row?.mainAndSupplementry ?? '',           // $14 main_and_supply
-      row?.courtNo ?? '',                     // $15 court_no
-      row?.aorCode ?? '',                     // $16 aor_code
-      row?.judge ?? '',                       // $17 judge_name
-      row?.partyName ?? '',                    // $18 party_name
+      row?.user_id ?? '',
+      row?.case_id ?? '',
     ];
 
     try {
-      // Existence check: same dairy_number, case_number, court, date
-      const existsSql = `
-        SELECT 1 FROM cause_list
-        WHERE COALESCE(dairy_number,'') = COALESCE($1,'')
-          AND COALESCE(case_number,'') = COALESCE($2,'')
-          AND court = $3
-          AND date = $4
-        LIMIT 1
-      `;
-      const existsParams = [
-        params[1], // dairy_number
-        params[2], // case_number
-        params[7], // court
-        params[9]  // date
-      ];
-      const existsRes = await db.query(existsSql, existsParams);
-      if (existsRes.rows && existsRes.rows.length > 0) {
-        skipped += 1;
-        continue;
-      }
-
       await db.query(insertSql, params);
       inserted += 1;
     } catch (err) {
@@ -188,7 +134,8 @@ const getSubscribedCases = async () => {
       AND court = 'Supreme Court'
     RETURNING 
       u.id as user_id,
-      uc.case_number, 
+      uc.case_number,
+      uc.id as case_id, 
       u.email,
       uc.diary_number,
       u.mobile_number,

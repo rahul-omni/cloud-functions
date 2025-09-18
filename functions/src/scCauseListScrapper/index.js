@@ -1,7 +1,7 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
 const { fetchSupremeCourtCauseList } = require('./scCauseListScrapper');
-const { getSubscribedCases, insertNotifications } = require('./components/db');
+const { getSubscribedCases, insertNotifications, insertCauselist } = require('./components/db');
 const pdfParse = require("pdf-parse");
 const axios = require('axios');
 const { processWhatsAppNotifications } = require("../notification/processWhatsappNotification");
@@ -26,9 +26,14 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
     console.log("[start] [scCauseListScrapper] scraper service started at:", new Date().toISOString());
 
     const date = new Date();
+
+    // move date to tomorrow
+    date.setDate(date.getDate() + 1);
+
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0'); // months are 0-based
     const year = date.getFullYear();
+
     const formattedDate = `${day}-${month}-${year}`;
 
     try {
@@ -46,6 +51,7 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
       let extractedPdfs = {};
       const fileName = `extractedPdfs-${formattedDate}.json`;
       const file = storage.bucket(bucketName).file(fileName);
+      const causeList = [];
 
       // 🔹 First try fetching JSON file from bucket
       const [exists] = await file.exists();
@@ -96,7 +102,7 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
       const subscribedCases = await getSubscribedCases();
 
       for (const row of subscribedCases) {
-        const { case_number, diary_number, mobile_number, user_id } = row;
+        const { case_number, diary_number, mobile_number, user_id, case_id } = row;
 
         for (const [url, pdfText] of Object.entries(extractedPdfs)) {
           // Build regex patterns (match number surrounded by space, newline, or period)
@@ -107,6 +113,10 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
             try {
               const message = `You have a new order on ${diary_number}.\nSee ${url} for more details.`;
               const { id } = await insertNotifications(diary_number, user_id, 'whatsapp', '9690665426', message);
+              causeList.push({
+                user_id,
+                case_id,
+              });
               await processWhatsAppNotifications(id);
             } catch (notifyErr) {
               console.error(`[error] Failed to notify user ${user_id} for case ${case_number || diary_number}:`, notifyErr);
@@ -114,6 +124,8 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
           }
         }
       }
+
+      await insertCauselist(causeList);
 
       return res.status(200).json({
         success: true,
