@@ -126,21 +126,27 @@ const insertCauselist = async (results) => {
 
 const getSubscribedCases = async () => {
   const sql = `
-    UPDATE user_cases uc
-    SET updated_at = NOW()
-    FROM users u
-    WHERE uc.user_id = u.id
-      AND (uc.updated_at::date <> CURRENT_DATE)
-      AND court = 'Supreme Court'
-    RETURNING 
-      u.id as user_id,
-      uc.case_number,
-      uc.id as case_id, 
-      u.email,
-      uc.diary_number,
-      u.mobile_number,
-      uc.updated_at;
-  `;
+      WITH rows_to_update AS (
+      SELECT uc.id
+      FROM user_cases uc
+      JOIN users u ON uc.user_id = u.id
+      WHERE (uc.last_synced IS NULL OR uc.last_synced::date <> CURRENT_DATE)
+        AND uc.court = 'Supreme Court'
+      LIMIT 100
+  )
+  UPDATE user_cases uc
+  SET last_synced = NOW()
+  FROM users u, rows_to_update r
+  WHERE uc.id = r.id
+    AND uc.user_id = u.id
+  RETURNING 
+    u.id AS user_id,
+    uc.case_number,
+    uc.id AS case_id, 
+    u.email,
+    uc.diary_number,
+    u.mobile_number,
+    uc.last_synced;`;
 
   const { rows } = await db.query(sql);
   return rows;

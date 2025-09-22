@@ -4,7 +4,7 @@ const { fetchSupremeCourtCauseList } = require('./scCauseListScrapper');
 const { getSubscribedCases, insertNotifications, insertCauselist } = require('./components/db');
 const pdfParse = require("pdf-parse");
 const axios = require('axios');
-const { processWhatsAppNotifications } = require("../notification/processWhatsappNotification");
+const { processWhatsAppNotifications, processWhatsAppNotificationsWithTemplate } = require("../notification/processWhatsappNotification");
 const { Storage } = require('@google-cloud/storage');
 
 // Create storage client
@@ -101,23 +101,54 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
       // 🔹 Get subscribed cases
       const subscribedCases = await getSubscribedCases();
 
+      // Function to normalize input case number: remove leading zeros, unify separators
+      function normalizeCaseNumber(caseNumber) {
+        if (!caseNumber) return null;
+
+        const parts = caseNumber.match(/\D+|\d+/g); // split digits and non-digits
+        if (!parts) return caseNumber.replace(/\s+/g, '').toLowerCase();
+
+        const normalizedParts = parts.map(part => {
+          if (/^\d+$/.test(part)) {
+            return part.replace(/^0+/, ''); // remove leading zeros
+          } else {
+            return part.replace(/[-/]/g, ''); // remove separators
+          }
+        });
+
+        return normalizedParts.join('').replace(/\s+/g, '').toLowerCase();
+      }
+
+      // In your search loop
       for (const row of subscribedCases) {
         const { case_number, diary_number, mobile_number, user_id, case_id } = row;
 
-        for (const [url, pdfText] of Object.entries(extractedPdfs)) {
-          // Build regex patterns (match number surrounded by space, newline, or period)
-          const caseRegex = case_number ? new RegExp(`[ \\n]${case_number}[ \\n.]`, "g") : null;
-          const diaryRegex = diary_number ? new RegExp(`[ \\n]${diary_number}[ \\n.]`, "g") : null;
+        // Normalize the case number (remove leading zeros, unify separators)
+        const normalizedCase = normalizeCaseNumber(case_number);
 
-          if ((caseRegex && caseRegex.test(pdfText)) || (diaryRegex && diaryRegex.test(pdfText))) {
+        for (const [url, pdfText] of Object.entries(extractedPdfs)) {
+          // Normalize PDF text for case number matching
+          const normalizedPdfText = pdfText.replace(/\s+/g, '').replace(/[-/]/g, '').toLowerCase();
+
+          // Case number match using normalized text
+          const caseMatch = normalizedCase ? normalizedPdfText.includes(normalizedCase) : false;
+
+          // Diary number match using regex like before
+          const safeDiaryNumber = diary_number ? diary_number.replace(/\//g, '[/-]') : null;
+          const diaryRegex = safeDiaryNumber ? new RegExp(`[ \\n]${safeDiaryNumber}[ \\n.]`, 'g') : null;
+          const diaryMatch = diaryRegex ? diaryRegex.test(pdfText) : false;
+
+          if (caseMatch || diaryMatch) {
             try {
-              const message = `You have a new order on ${diary_number}.\nSee ${url} for more details.`;
-              const { id } = await insertNotifications(diary_number, user_id, 'whatsapp', '9690665426', message);
+              const message = `You have a new order on ${caseMatch ? case_number : diary_number} dated ${formattedDate}.\nSee ${url} for more details.`;
+              const { id } = await insertNotifications(caseMatch ? case_number : diary_number, user_id, 'whatsapp', mobile_number, message);
+
               causeList.push({
                 user_id,
                 case_id,
               });
-              await processWhatsAppNotifications(id);
+
+              await processWhatsAppNotificationsWithTemplate(id, 'order_status', [caseMatch ? case_number : diary_number, formattedDate, url]);
             } catch (notifyErr) {
               console.error(`[error] Failed to notify user ${user_id} for case ${case_number || diary_number}:`, notifyErr);
             }
