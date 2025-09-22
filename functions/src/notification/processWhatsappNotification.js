@@ -24,7 +24,7 @@ const getWhatsAppToken = async () => {
   }
 };
 
-const processWhatsAppNotifications = async (id) => {
+const processWhatsAppNotifications = async (id, template_name, data) => {
   console.log('[start] [processWhatsAppNotifications] whatsapp notification started for id: ', id);
 
   try {
@@ -48,16 +48,6 @@ const processWhatsAppNotifications = async (id) => {
     }
 
     let formattedPhone = notification.contact.replace(/\D/g, ''); // Remove all non-digit characters
-
-    // // Add + if missing (but has country code)
-    // if (!formattedPhone.startsWith('+')) {
-    //   // If starts with country code (91, 92, etc.)
-    //   if (formattedPhone.match(/^[1-9]\d{9,14}$/)) {
-    //     formattedPhone = '+' + formattedPhone;
-    //   } else {
-    //     throw new Error('Phone number must include country code (e.g. 919991910535 or +919991910535)');
-    //   }
-    // }
 
     try {
       // Simulate sending WhatsApp message
@@ -119,7 +109,103 @@ const processWhatsAppNotifications = async (id) => {
 
   return null;
 }
+const processWhatsAppNotificationsWithTemplate = async (id, template_name, data = []) => {
+  console.log('[start] [processWhatsAppNotifications] WhatsApp notification started for id:', id);
+
+  try {
+    const notification = await get_notification_by_id(id);
+
+    if (!notification) {
+      throw new Error('No pending WhatsApp notifications found for id: ' + id);
+    }
+
+    if (notification.status === 'success') {
+      throw new Error('WhatsApp notification already processed for id: ' + id);
+    }
+
+    if (!notification.contact) {
+      throw new Error('No contact found for this notification for id: ' + id);
+    }
+
+    if (notification.method !== 'whatsapp') {
+      throw new Error('Notification method is not WhatsApp for id: ' + id);
+    }
+
+    let formattedPhone = notification.contact.replace(/\D/g, '');
+
+    try {
+      console.log('\n📱 Sending WhatsApp template message:');
+
+      // Convert data array to WhatsApp template parameters
+      const templateParameters = data.map(param => ({
+        type: 'text',
+        text: String(param)
+      }));
+
+      const requestBody = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formattedPhone,
+        type: 'template',
+        template: {
+          name: template_name,
+          language: { code: 'en' }, // Must match the approved template language
+          components: [
+            {
+              type: 'body',
+              parameters: templateParameters
+            }
+          ]
+        }
+      };
+
+      // API endpoint
+      const apiUrl = WHATSAPP_API_URL.replace(/\/+$/, '');
+      const endpoint = `${apiUrl}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+      const token = TOKEN;
+
+      // Send request
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('WhatsApp API error:', { endpoint, requestBody, errorData });
+        await update_notification_status(notification.id, 'failed');
+        throw new Error(`WhatsApp API error: ${errorData.error?.message || 'Failed to send WhatsApp message'}`);
+      }
+
+      const responseData = await response.json();
+      console.log('[info] [processWhatsAppNotifications] WhatsApp API response:', responseData);
+
+      // Update status to success
+      await update_notification_status(notification.id, 'success');
+      console.log(`[info] [processWhatsAppNotificationsDB] WhatsApp notification ${notification.id} marked as success`);
+
+    } catch (error) {
+      console.error(`[error] [processWhatsAppNotificationsDB] Failed to process WhatsApp notification ${notification.id}:`, error);
+      await update_notification_status(notification.id, 'failed');
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('[error] [processWhatsAppNotifications] Error in WhatsApp notification processor:', error);
+    throw error;
+  } finally {
+    console.log('[end] [processWhatsAppNotifications] WhatsApp notification processor ended for id:', id);
+  }
+
+  return null;
+};
+
 
 module.exports = {
-  processWhatsAppNotifications
+  processWhatsAppNotifications,
+  processWhatsAppNotificationsWithTemplate
 }
