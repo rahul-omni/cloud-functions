@@ -4,14 +4,11 @@ const axios = require('axios');
 // Get OpenAI API key from Firebase config (production) or environment variable (local)
 let openAiKey;
 try {
-    // Try Firebase functions config first (production)
     openAiKey = functions.config().environment?.openai_api_key;
 } catch (error) {
-    // Fallback to environment variable (local development)
     openAiKey = null;
 }
 
-// If Firebase config didn't work, try environment variable
 if (!openAiKey) {
     openAiKey = process.env.OPENAI_API_KEY;
 }
@@ -19,141 +16,145 @@ if (!openAiKey) {
 const KEY = openAiKey;
 
 if (!KEY) { 
-    console.error('🔴  OPENAI_API_KEY missing nclt court'); 
-    console.log('💡 For local testing, set environment variable: $env:OPENAI_API_KEY="your-key"');
-    console.log('💡 For production, use: firebase functions:config:set environment.openai_api_key="your-key"');
-    process.exit(1); 
+    console.log('🔴  OPENAI_API_KEY missing - will use manual captcha solving'); 
 }
 
-// Solve NCLT captcha using OpenAI Vision API
+// Enhanced NCLT captcha solver with more direct approach
 async function solveCaptcha(buf) {
     if (!KEY) {
+        console.log('[captcha] ❌ OpenAI API key not available');
         throw new Error('OpenAI API key not configured');
     }
 
-    const dataURL = 'data:image/png;base64,' + buf.toString('base64');
-    
-    console.log('[captcha] Solving NCLT captcha...');
-    
-    const r = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
-        {
-            model: 'gpt-4-turbo',
-            messages: [{
-                role: 'user',
-                content: [
-                    { 
-                        type: 'text', 
-                        text: 'This is an NCLT (National Company Law Tribunal) website captcha. Look at the image and tell me the exact numbers or letters shown. The captcha typically shows 4-5 alphanumeric characters in a simple format like "4382". Respond with ONLY the characters you see, nothing else. Example: if you see "4382", respond exactly: 4382'
-                    },
-                    { type: 'image_url', image_url: { url: dataURL } }
-                ]
-            }],
-            max_tokens: 10,
-            temperature: 0.0
-        },
-        { headers: { Authorization: `Bearer ${KEY}` } }
-    );
-    
-    const rawResponse = r.data.choices[0].message.content.trim();
-    console.log(`[captcha] Raw AI response: "${rawResponse}"`);
-    
-    // Check if ChatGPT says there's no captcha or can't see one
-    if (rawResponse.toLowerCase().includes('no captcha') || 
-        rawResponse.toLowerCase().includes('does not contain') ||
-        rawResponse.toLowerCase().includes('cannot see') ||
-        rawResponse.toLowerCase().includes('unable to') ||
-        rawResponse.toLowerCase().includes('not visible')) {
-        console.log('[captcha] ⚠️ ChatGPT says no captcha detected in image');
-        throw new Error('ChatGPT could not detect captcha in image - image capture may be incorrect');
-    }
-    
-    // Clean the response - remove any non-alphanumeric characters
-    const cleanedResponse = rawResponse.replace(/[^a-zA-Z0-9]/g, '');
-    console.log(`[captcha] Cleaned response: "${cleanedResponse}"`);
-    
-    // Validate response length (NCLT captchas can be 2-6 characters)
-    if (cleanedResponse.length < 2 || cleanedResponse.length > 6) {
-        console.log(`[captcha] Warning: Response length ${cleanedResponse.length} is unusual for NCLT captcha, retrying...`);
-        return await solveCaptchaRetry(buf);
-    }
-    
-    // If response is only 2 characters, double-check with retry
-    if (cleanedResponse.length === 2) {
-        console.log(`[captcha] Short response detected (${cleanedResponse}), verifying with retry...`);
-        try {
-            const retryResult = await solveCaptchaRetry(buf);
-            // If retry gives a similar short result, accept it
-            if (retryResult && retryResult.length >= 2) {
-                return retryResult;
+    try {
+        console.log('[captcha] 🧠 Solving NCLT captcha with enhanced prompt...');
+
+        const base64Image = buf.toString('base64');
+        const dataURL = `data:image/png;base64,${base64Image}`;
+
+        // More direct and assertive prompt for GPT-4
+        const response = await axios.post(
+            'https://api.openai.com/v1/chat/completions',
+            {
+                model: 'gpt-4o',
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { 
+                            type: 'text', 
+                            text: `You are an expert at reading distorted text. This image shows a 4-digit number CAPTCHA from an Indian government website (NCLT). The numbers are like "1477" but may have visual distortions, lines, or noise. 
+
+Your task: Look at this image and identify the 4 digits shown. Return ONLY the 4 digits as a simple number, nothing else. No explanations, no refusals.
+
+Example responses: 1477, 2358, 9012, 0456
+
+Now look at the image and tell me the 4 digits:`
+                        },
+                        { 
+                            type: 'image_url', 
+                            image_url: { url: dataURL } 
+                        }
+                    ]
+                }],
+                max_tokens: 10,
+                temperature: 0.1
+            },
+            { 
+                headers: { 
+                    'Authorization': `Bearer ${KEY}`,
+                    'Content-Type': 'application/json'
+                } 
             }
-        } catch (error) {
-            console.log('[captcha] Retry failed, using original short response');
+        );
+
+        const captchaText = response.data.choices[0].message.content.trim();
+        console.log(`[captcha] AI raw response: "${captchaText}"`);
+
+        // Extract digits from response
+        const cleanedText = captchaText.replace(/[^0-9]/g, '');
+        
+        if (cleanedText.length >= 4) {
+            const result = cleanedText.substring(0, 4);
+            console.log(`[captcha] ✅ NCLT captcha solved: "${result}"`);
+            return result;
+        } else if (cleanedText.length > 0) {
+            // Pad with leading zeros if needed
+            const result = cleanedText.padStart(4, '0');
+            console.log(`[captcha] ✅ NCLT captcha solved (padded): "${result}"`);
+            return result;
+        } else {
+            console.log(`[captcha] ❌ No digits found in response: "${captchaText}"`);
+            
+            // Try one more time with even more direct prompt
+            return await solveCaptchaFallback(buf);
+        }
+
+    } catch (error) {
+        console.error('[captcha] ❌ Primary captcha solving failed:', error.message);
+        
+        // Try fallback approach
+        try {
+            return await solveCaptchaFallback(buf);
+        } catch (fallbackError) {
+            console.error('[captcha] ❌ Fallback also failed:', fallbackError.message);
+            throw new Error('All captcha solving methods failed');
         }
     }
-    
-    console.log(`[captcha] Final NCLT captcha solution: "${cleanedResponse}"`);
-    return cleanedResponse;
 }
 
-// Retry NCLT captcha solving with more specific prompt
-async function solveCaptchaRetry(buf) {
+// Fallback captcha solver with very simple prompt
+async function solveCaptchaFallback(buf) {
     if (!KEY) {
-        throw new Error('OpenAI API key not configured');
+        throw new Error('OpenAI API key not available');
     }
 
-    const dataURL = 'data:image/png;base64,' + buf.toString('base64');
-    
-    console.log('[captcha] Retrying NCLT captcha with specific prompt...');
-    
-    const r = await axios.post(
+    console.log('[captcha] 🔄 Trying fallback approach...');
+
+    const base64Image = buf.toString('base64');
+    const dataURL = `data:image/png;base64,${base64Image}`;
+
+    const response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
-            model: 'gpt-4-turbo',
+            model: 'gpt-4o',
             messages: [{
                 role: 'user',
                 content: [
                     { 
                         type: 'text', 
-                        text: 'Look at this NCLT captcha image. I need you to identify the exact alphanumeric characters shown. The characters are usually 4-5 digits or letters in a simple font. Please respond with ONLY those characters, no explanations. Example: if you see numbers like "4382", respond: 4382'
+                        text: 'What 4 numbers do you see? Just give me the 4 digits like: 1234'
                     },
-                    { type: 'image_url', image_url: { url: dataURL } }
+                    { 
+                        type: 'image_url', 
+                        image_url: { url: dataURL } 
+                    }
                 ]
             }],
-            max_tokens: 8,
+            max_tokens: 15,
             temperature: 0.0
         },
-        { headers: { Authorization: `Bearer ${KEY}` } }
+        { 
+            headers: { 
+                'Authorization': `Bearer ${KEY}`,
+                'Content-Type': 'application/json'
+            } 
+        }
     );
+
+    const fallbackText = response.data.choices[0].message.content.trim();
+    console.log(`[captcha] Fallback response: "${fallbackText}"`);
+
+    const cleaned = fallbackText.replace(/[^0-9]/g, '');
     
-    const rawResponse = r.data.choices[0].message.content.trim();
-    console.log(`[captcha] Retry raw response: "${rawResponse}"`);
-    
-    // Check if ChatGPT says there's no captcha or can't see one
-    if (rawResponse.toLowerCase().includes('no captcha') || 
-        rawResponse.toLowerCase().includes('does not contain') ||
-        rawResponse.toLowerCase().includes('cannot see') ||
-        rawResponse.toLowerCase().includes('unable to') ||
-        rawResponse.toLowerCase().includes('not visible')) {
-        console.log('[captcha] ⚠️ ChatGPT retry also says no captcha detected in image');
-        throw new Error('ChatGPT retry could not detect captcha in image - image capture is definitely incorrect');
-    }
-    
-    const cleanedResponse = rawResponse.replace(/[^a-zA-Z0-9]/g, '');
-    console.log(`[captcha] Retry cleaned response: "${cleanedResponse}"`);
-    
-    // Additional validation for NCLT format
-    if (cleanedResponse.length >= 3 && cleanedResponse.length <= 6) {
-        console.log(`[captcha] ✅ Valid NCLT captcha solved: "${cleanedResponse}"`);
-        return cleanedResponse;
+    if (cleaned.length >= 4) {
+        const result = cleaned.substring(0, 4);
+        console.log(`[captcha] ✅ Fallback success: "${result}"`);
+        return result;
     } else {
-        console.log(`[captcha] ⚠️ Invalid NCLT captcha format, length: ${cleanedResponse.length}`);
-        // Return best attempt even if not ideal length
-        return cleanedResponse;
+        throw new Error(`Fallback failed: only ${cleaned.length} digits found`);
     }
 }
 
 module.exports = {
-    solveCaptcha,
-    solveCaptchaRetry
+    solveCaptcha
 };

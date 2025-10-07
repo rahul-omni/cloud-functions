@@ -32,7 +32,7 @@ async function insertOrder(dbClient, orderData) {
         // Prepare data using the working District Court pattern
         const judgmentDate = orderData.judgmentDate || orderData.filingDate || null;
         const caseNumber = orderData.caseNumber || orderData.filingNumber || null;
-        const caseType = orderData.case_type || 'Company Petition IB (IBC)';
+        const caseType = orderData.case_type || '';
 
         // Prepare judgment URL array - extract unique PDF URLs
         const uniquePdfUrls = [];

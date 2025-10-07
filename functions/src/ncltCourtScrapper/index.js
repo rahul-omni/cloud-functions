@@ -1,7 +1,6 @@
 const functions = require("firebase-functions");
-const { NCLTCourtJudgmentsScrapper } = require('./ncltCourtScrapper');
 
-// NCLT Court Judgments Scraper Function
+// NCLT Court Judgments Scraper Function - NO IMPORTS AT MODULE LEVEL
 exports.fetchNCLTCourtJudgments = functions
   .region('asia-south1')
   .runWith({
@@ -14,48 +13,53 @@ exports.fetchNCLTCourtJudgments = functions
     try {
       console.log(`[${requestId}] [start] [fetchNCLTCourtJudgments] NCLT Court Scraping started`);
       
+      // LAZY LOAD THE SCRAPER INSIDE THE FUNCTION
+      console.log(`[${requestId}] [info] Loading NCLT scraper module...`);
+      const { NCLTCourtJudgmentsScrapper } = require('./ncltCourtScrapper');
+      console.log(`[${requestId}] [info] NCLT scraper module loaded successfully`);
+      
       // Extract payload - FIXED TO HANDLE PARSING
       let {
         diaryNumber,
         year,
         court,
         caseType,
-        bench
+        bench,
+        cp_no,
+        case_type
       } = request.body;
+      
+      // Handle different parameter formats
+      if (!diaryNumber && cp_no) {
+        diaryNumber = cp_no;
+      }
+      if (!caseType && case_type) {
+        caseType = case_type;
+      }
       
       // PARSE DIARY NUMBER AND YEAR IF THEY'RE COMBINED
       if (diaryNumber && diaryNumber.includes('/') && !year) {
         console.log(`[${requestId}] [debug] Parsing combined diaryNumber: ${diaryNumber}`);
-        
         const parts = diaryNumber.split('/');
         if (parts.length === 2) {
-          diaryNumber = parts[0].trim(); // Extract just the number part
-          year = parts[1].trim();        // Extract the year part
-          
-          console.log(`[${requestId}] [debug] Parsed - diaryNumber: ${diaryNumber}, year: ${year}`);
+          diaryNumber = parts[0].trim();
+          year = parts[1].trim();
         }
       }
       
-      // If year is still missing, try to extract from caseType or set default
+      // If year is still missing, try to extract from request body as separate field
       if (!year) {
         console.log(`[${requestId}] [debug] Year still missing, checking other sources...`);
-        
-        // Try to extract year from request body as separate field
         if (request.body.year) {
           year = request.body.year.toString();
         } else {
-          // Set current year as fallback
           year = new Date().getFullYear().toString();
-          console.log(`[${requestId}] [debug] Using current year as fallback: ${year}`);
+          console.log(`[${requestId}] [debug] Using default year: ${year}`);
         }
       }
       
       console.log(`[${requestId}] [info] Processed Payload:`, {
-        diaryNumber,
-        year,
-        court,
-        caseType,
-        bench
+        diaryNumber, year, court, caseType, bench
       });
       
       // Validate required parameters
@@ -77,10 +81,10 @@ exports.fetchNCLTCourtJudgments = functions
         });
       }
       
-      // Call scraper with processed payload object
+      // Prepare search parameters
       const searchParams = {
-        diaryNumber,  // Now this should be just "36"
-        year,         // Now this should be "2022"
+        diaryNumber,
+        year,
         court,
         caseType,
         bench
@@ -88,6 +92,7 @@ exports.fetchNCLTCourtJudgments = functions
       
       console.log(`[${requestId}] [info] Starting NCLT scraping with parameters:`, searchParams);
       
+      // Call the scraper function
       const result = await NCLTCourtJudgmentsScrapper(searchParams);
       
       console.log(`[${requestId}] [success] [fetchNCLTCourtJudgments] Completed processing. Total records: ${result.total_records || result.totalRecords || 0}`);
@@ -99,17 +104,18 @@ exports.fetchNCLTCourtJudgments = functions
         data: result.data || [],
         message: result.message || 'NCLT scraping completed successfully',
         search_parameters: {
-          original_diaryNumber: request.body.diaryNumber, // Show original input
-          parsed_diaryNumber: diaryNumber,                // Show parsed diary number
-          parsed_year: year,                             // Show parsed year
+          original_diaryNumber: request.body.diaryNumber || request.body.cp_no,
+          parsed_diaryNumber: diaryNumber,
+          parsed_year: year,
           bench: bench,
           caseType: caseType
         },
+        extraction_metadata: result.extraction_metadata || {},
+        pdf_count: result.pdf_count || 0,
         ...result
       };
       
       response.status(200).json(finalResult);
-      
       console.log(`[${requestId}] [end] [fetchNCLTCourtJudgments] NCLT Court Scraping completed`);
       
     } catch (error) {
@@ -121,7 +127,9 @@ exports.fetchNCLTCourtJudgments = functions
         error: error.message,
         message: 'NCLT scraping failed',
         total_records: 0,
-        data: []
+        data: [],
+        error_type: error.name || 'UnknownError',
+        timestamp: new Date().toISOString()
       });
       
       console.log(`[${requestId}] [end] [fetchNCLTCourtJudgments] NCLT Court Scraping completed with error`);
