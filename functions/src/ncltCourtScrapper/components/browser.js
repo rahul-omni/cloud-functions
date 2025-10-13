@@ -543,31 +543,25 @@ async function fillNCLTForm(page, bench, caseType, cpNo, year) {
 }
 
 // Enhanced captcha handling with AI solving
-// Add this enhanced captcha handling function to your browser.js
-
- 
-
- // ...existing code...
-
-// Enhanced NCLT captcha handler
+ // Replace the handleNCLTCaptcha function with this COMPLETE version
 async function handleNCLTCaptcha(page, captchaText = null) {
-    console.log('[captcha] 🔍 Enhanced NCLT captcha handling...');
+    console.log('[captcha] 🔍 COMPLETE AUTOMATIC NCLT captcha solving...');
     
     try {
         // Wait for page to settle
-        await page.waitForTimeout(3000);
+        await delay(3000);
         
-        // Find captcha elements with multiple selectors
+        // STEP 1: Find captcha elements on the page
         const captchaInfo = await page.evaluate(() => {
             // Look for captcha input field
             const captchaSelectors = [
                 'input[placeholder*="captcha" i]',
                 'input[placeholder*="Captcha"]', 
                 'input[name*="captcha" i]',
-                'input[name="txtInput"]',
-                'input[id*="captcha" i]',
-                '.captcha input',
-                '#captcha'
+                'input[id="txtInput"]',
+                '#txtInput',
+                'input[autocomplete="off"]',
+                '.form-control[placeholder*="Enter Captcha"]'
             ];
             
             let captchaInput = null;
@@ -581,244 +575,480 @@ async function handleNCLTCaptcha(page, captchaText = null) {
                 }
             }
             
-            // Look for captcha image
-            const captchaImage = document.querySelector('img[src*="captcha"]') || 
-                                document.querySelector('img[alt*="captcha"]') ||
-                                document.querySelector('.captcha img') ||
-                                document.querySelector('img'); // fallback to any image
+            // STEP 2: Look for captcha display elements (DOM or image)
+            const captchaDisplaySelectors = [
+                '#mainCaptcha',           // The div with ID mainCaptcha
+                '.captchabg',             // The div with class captchabg  
+                'div.captchabg',          
+                '.text-center[id="mainCaptcha"]',
+                'div[style*="text-decoration-line: underline"]',
+                'img[src*="captcha"]',    // Captcha images
+                'img[alt*="captcha"]',
+                '.captcha img'
+            ];
+            
+            let displayedCaptchaNumber = null;
+            let captchaElement = null;
+            let captchaMethod = null;
+            
+            // First try to extract from DOM text (like "5 9 4 7")
+            for (const selector of captchaDisplaySelectors) {
+                captchaElement = document.querySelector(selector);
+                if (captchaElement) {
+                    console.log(`Found captcha element with selector: ${selector}`);
+                    
+                    // If it's a div with text content (like your example)
+                    if (captchaElement.tagName !== 'IMG') {
+                        const captchaText = captchaElement.textContent || captchaElement.innerText || '';
+                        console.log(`Raw captcha text: "${captchaText}"`);
+                        
+                        // Clean the text - remove spaces and get digits
+                        const cleanedText = captchaText.replace(/\s+/g, '').trim();
+                        console.log(`Cleaned captcha text: "${cleanedText}"`);
+                        
+                        // Check if it's a valid 4-digit number
+                        if (/^\d{4}$/.test(cleanedText)) {
+                            displayedCaptchaNumber = cleanedText;
+                            captchaMethod = 'DOM_TEXT';
+                            console.log(`Extracted captcha number from DOM: "${displayedCaptchaNumber}"`);
+                            break;
+                        } else {
+                            // Try to extract digits from spaced text like "5 9 4 7"
+                            const digits = captchaText.match(/\d/g);
+                            if (digits && digits.length >= 4) {
+                                displayedCaptchaNumber = digits.slice(0, 4).join('');
+                                captchaMethod = 'DOM_SPACED_TEXT';
+                                console.log(`Extracted spaced captcha: "${displayedCaptchaNumber}"`);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             
             return {
                 hasInput: !!captchaInput,
-                hasImage: !!captchaImage,
                 inputSelector: usedSelector,
-                imageSrc: captchaImage ? captchaImage.src : null,
                 inputName: captchaInput ? captchaInput.name : null,
-                inputPlaceholder: captchaInput ? captchaInput.placeholder : null
+                inputId: captchaInput ? captchaInput.id : null,
+                inputPlaceholder: captchaInput ? captchaInput.placeholder : null,
+                displayedNumber: displayedCaptchaNumber,
+                captchaMethod: captchaMethod,
+                captchaElement: captchaElement ? {
+                    tagName: captchaElement.tagName,
+                    id: captchaElement.id,
+                    className: captchaElement.className,
+                    textContent: captchaElement.textContent
+                } : null
             };
         });
         
-        console.log('[captcha] Captcha detection:', captchaInfo);
+        console.log('[captcha] CAPTCHA DETECTION RESULTS:', {
+            hasInput: captchaInfo.hasInput,
+            displayedNumber: captchaInfo.displayedNumber,
+            captchaMethod: captchaInfo.captchaMethod,
+            inputSelector: captchaInfo.inputSelector,
+            captchaElement: captchaInfo.captchaElement
+        });
         
         if (!captchaInfo.hasInput) {
-            console.log('[captcha] ✅ No captcha input field found');
+            console.log('[captcha] ✅ No captcha input field found - proceeding');
             return true;
         }
         
-        if (!captchaInfo.hasImage) {
-            console.log('[captcha] ⚠️ Captcha input found but no captcha image detected');
-            return false;
-        }
-        
-        // If manual captcha text provided
-        if (captchaText) {
-            console.log(`[captcha] 📝 Using provided captcha: "${captchaText}"`);
-            
-            const filled = await page.evaluate((text, selector) => {
-                const input = document.querySelector(selector);
-                if (input) {
-                    input.focus();
-                    input.value = '';
-                    input.value = text;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                    input.blur();
-                    return true;
-                }
-                return false;
-            }, captchaText, captchaInfo.inputSelector);
-            
+        // Manual captcha for testing
+        if (captchaText && captchaText.trim() !== '') {
+            console.log(`[captcha] 📝 TESTING: Using provided captcha: "${captchaText}"`);
+            const filled = await fillCaptchaInput(page, captchaText.trim(), captchaInfo.inputSelector);
             if (filled) {
                 console.log('[captcha] ✅ Manual captcha filled successfully');
                 return true;
-            } else {
-                console.log('[captcha] ❌ Failed to fill manual captcha');
-                return false;
             }
         }
         
-        // AI captcha solving
-        console.log('[captcha] 🤖 Attempting AI captcha solving...');
-        
-        try {
-            const { solveCaptcha } = require('./captcha');
-            
-            // Find captcha image element
-            const captchaImageElement = await page.$('img');
-            if (!captchaImageElement) {
-                throw new Error('No captcha image element found for screenshot');
-            }
-            
-            // Wait for image to load completely
-            await page.waitForTimeout(2000);
-            
-            // Take screenshot of the captcha image
-            const imageBuffer = await captchaImageElement.screenshot({
-                type: 'png',
-                omitBackground: true
-            });
-            
-            console.log(`[captcha] 📸 Screenshot captured: ${imageBuffer.length} bytes`);
-            
-            if (imageBuffer.length < 500) {
-                throw new Error('Screenshot too small - image may not be loaded');
-            }
-            
-            // Solve captcha using AI
-            const solvedText = await solveCaptcha(imageBuffer);
-            console.log(`[captcha] ✅ AI solved captcha: "${solvedText}"`);
-            
-            // Fill the captcha input field
-            const filled = await page.evaluate((text, selector) => {
-                const input = document.querySelector(selector);
-                if (input) {
-                    console.log(`Filling captcha input with: ${text}`);
-                    input.focus();
-                    input.value = '';
-                    input.value = text;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                    input.blur();
-                    return true;
-                }
-                return false;
-            }, solvedText, captchaInfo.inputSelector);
-            
+        // STEP 3: If we found the displayed number directly from DOM, use it
+        if (captchaInfo.displayedNumber && captchaInfo.captchaMethod) {
+            console.log(`[captcha] 🎯 Using directly extracted DOM number: "${captchaInfo.displayedNumber}" (method: ${captchaInfo.captchaMethod})`);
+            const filled = await fillCaptchaInput(page, captchaInfo.displayedNumber, captchaInfo.inputSelector);
             if (filled) {
-                console.log('[captcha] ✅ AI captcha filled successfully');
-                
-                // Verify the value was set
-                await page.waitForTimeout(1000);
-                const verification = await page.evaluate((selector) => {
-                    const input = document.querySelector(selector);
-                    return input ? input.value : null;
-                }, captchaInfo.inputSelector);
-                
-                console.log(`[captcha] 🔍 Verified input value: "${verification}"`);
+                console.log('[captcha] ✅ Direct DOM extraction successful!');
                 return true;
-            } else {
-                throw new Error('Failed to fill captcha input field');
             }
-            
-        } catch (aiError) {
-            console.log('[captcha] ❌ AI captcha solving failed:', aiError.message);
-            console.log('[captcha] ⚠️ Captcha auto-solving failed - continuing anyway');
-            return false;
         }
+        
+        // STEP 4: If DOM extraction failed, use AI-based OCR with screenshot
+        console.log('[captcha] 🤖 Starting AI-based captcha solving with screenshot...');
+        
+        const maxAttempts = 3;
+        let lastError = null;
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`[captcha] 🎯 AI solving attempt ${attempt}/${maxAttempts}...`);
+                
+                // STEP 4A: Find the best element to screenshot
+                let captchaElement = null;
+                
+                // Try to find the captcha display element first
+                captchaElement = await page.$('#mainCaptcha, .captchabg, div[id="mainCaptcha"]');
+                
+                // If no specific captcha display element, try captcha images
+                if (!captchaElement) {
+                    captchaElement = await page.$('img[src*="captcha"], .captcha img, img[alt*="captcha"]');
+                }
+                
+                // If still no element, try any image on the page
+                if (!captchaElement) {
+                    captchaElement = await page.$('img');
+                }
+                
+                if (!captchaElement) {
+                    throw new Error('No captcha element found for AI solving');
+                }
+                
+                // STEP 4B: Take screenshot of the captcha element
+                const imageBuffer = await captchaElement.screenshot({
+                    type: 'png',
+                    omitBackground: false
+                });
+                
+                console.log(`[captcha] 📸 Screenshot captured: ${imageBuffer.length} bytes`);
+                
+                if (imageBuffer.length < 100) {
+                    throw new Error(`Screenshot too small: ${imageBuffer.length} bytes`);
+                }
+                
+                // STEP 4C: Send to AI solver (your solveCaptcha function)
+                const { solveCaptcha, solveCaptchaOCR } = require('./captcha');
+                
+                let solvedText = null;
+                
+                // Try main AI solver first
+                try {
+                    console.log('[captcha] 🧠 Sending to main AI solver (solveCaptcha)...');
+                    solvedText = await solveCaptcha(imageBuffer);
+                    console.log(`[captcha] 🎉 AI solver returned: "${solvedText}"`);
+                } catch (mainError) {
+                    console.log(`[captcha] Main AI solver failed: ${mainError.message}`);
+                    
+                    // Try OCR fallback
+                    try {
+                        console.log('[captcha] 🔍 Trying OCR fallback solver...');
+                        solvedText = await solveCaptchaOCR(imageBuffer);
+                        console.log(`[captcha] 🎉 OCR solver returned: "${solvedText}"`);
+                    } catch (ocrError) {
+                        console.log(`[captcha] OCR fallback failed: ${ocrError.message}`);
+                        throw mainError;
+                    }
+                }
+                
+                // STEP 4D: Validate the AI response
+                if (!solvedText || solvedText.trim().length === 0) {
+                    throw new Error('AI solver returned empty result');
+                }
+                
+                // Clean the AI response (remove any extra characters)
+                const cleanedSolution = solvedText.replace(/[^\d]/g, '').trim();
+                
+                if (cleanedSolution.length !== 4) {
+                    console.log(`[captcha] ⚠️ AI returned "${solvedText}", cleaned to "${cleanedSolution}" (not 4 digits)`);
+                    // Still try to use it, but log warning
+                }
+                
+                const finalSolution = cleanedSolution || solvedText.trim();
+                console.log(`[captcha] ✅ AI solving successful: "${finalSolution}"`);
+                
+                // STEP 4E: Fill the captcha input with AI solution
+                const filled = await fillCaptchaInput(page, finalSolution, captchaInfo.inputSelector);
+                
+                if (filled) {
+                    // STEP 4F: Verify the input was filled correctly
+                    await delay(1000);
+                    const verification = await page.evaluate((selector) => {
+                        const input = document.querySelector(selector);
+                        return input ? input.value : null;
+                    }, captchaInfo.inputSelector);
+                    
+                    console.log(`[captcha] 🔍 Verification check: "${verification}"`);
+                    
+                    if (verification === finalSolution) {
+                        console.log('[captcha] ✅ AI captcha solved and verified perfectly!');
+                    } else {
+                        console.log('[captcha] ⚠️ Verification mismatch but continuing...');
+                    }
+                    
+                    return true;
+                } else {
+                    throw new Error('Failed to fill captcha input with AI solution');
+                }
+                
+            } catch (attemptError) {
+                lastError = attemptError;
+                console.log(`[captcha] ❌ AI attempt ${attempt} failed: ${attemptError.message}`);
+                
+                if (attempt < maxAttempts) {
+                    console.log(`[captcha] 🔄 Retrying in 3 seconds...`);
+                    await delay(3000);
+                    
+                    // Try to refresh captcha for next attempt
+                    try {
+                        const refreshClicked = await page.evaluate(() => {
+                            const refreshElements = document.querySelectorAll('.refresh_captcha, .btnRefresh img, img[src*="refresh"], .btnRefresh');
+                            for (const element of refreshElements) {
+                                if (element.click) {
+                                    element.click();
+                                    console.log('Clicked refresh element');
+                                    return true;
+                                }
+                            }
+                            
+                            // Try clicking parent elements
+                            const refreshBtns = document.querySelectorAll('.btnRefresh');
+                            for (const btn of refreshBtns) {
+                                if (btn.click) {
+                                    btn.click();
+                                    console.log('Clicked refresh button');
+                                    return true;
+                                }
+                            }
+                            
+                            return false;
+                        });
+                        
+                        if (refreshClicked) {
+                            await delay(2000);
+                            console.log('[captcha] 🔄 Captcha refreshed, will get new number for next attempt...');
+                        }
+                    } catch (refreshError) {
+                        console.log('[captcha] ⚠️ Could not refresh captcha:', refreshError.message);
+                    }
+                }
+            }
+        }
+        
+        console.log('[captcha] ❌ ALL captcha solving attempts failed');
+        throw new Error(`COMPLETE captcha solving failed after ${maxAttempts} attempts. Last error: ${lastError?.message}`);
         
     } catch (error) {
-        console.error('[captcha] ❌ Captcha handling error:', error.message);
-        console.log('[captcha] ⚠️ Captcha auto-solving failed - continuing anyway');
+        console.error('[captcha] ❌ Complete captcha handling error:', error.message);
+        throw error;
+    }
+}
+ 
+// Helper function to fill captcha input
+async function fillCaptchaInput(page, captchaText, inputSelector) {
+    try {
+        const filled = await page.evaluate((text, selector) => {
+            const input = document.querySelector(selector);
+            if (input) {
+                // Clear any existing value
+                input.focus();
+                input.value = '';
+                
+                // Set the new value
+                input.value = text;
+                
+                // Trigger events
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new Event('keyup', { bubbles: true }));
+                
+                input.blur();
+                return true;
+            }
+            return false;
+        }, captchaText, inputSelector);
+        
+        if (filled) {
+            console.log(`[captcha] ✅ Captcha filled successfully: "${captchaText}"`);
+            return true;
+        } else {
+            console.log('[captcha] ❌ Failed to fill captcha input');
+            return false;
+        }
+    } catch (error) {
+        console.log('[captcha] ❌ Error filling captcha input:', error.message);
         return false;
     }
 }
 
 // Enhanced form submission to find the Search button
+// Replace the existing submitNCLTForm function with this enhanced version
+
+// Enhanced form submission based on testform.js working logic
 async function submitNCLTForm(page, searchParams) {
     try {
-        console.log('[submit] Enhanced form submission with better button detection...');
+        console.log('[submit] Enhanced form submission with improved error handling...');
         
         const originalUrl = page.url();
         console.log(`📍 Original URL: ${originalUrl}`);
         
-        // Enhanced search button detection
-        console.log('🔍 Looking for Search button...');
+        // Set up navigation promise BEFORE clicking (from testform.js)
+        const navigationPromise = page.waitForNavigation({
+            waitUntil: ['domcontentloaded', 'networkidle2'],
+            timeout: 120000 // 2 minutes
+        }).catch(navError => {
+            console.log('⚠️ Navigation promise failed (this might be normal):', navError.message);
+            return null;
+        });
+        
+        // Enhanced search button detection - avoiding main site search
+        console.log('🖱️ Finding and clicking submit button...');
         const submitResult = await page.evaluate(() => {
-            // Multiple selectors to find the search/submit button
-            const buttonSelectors = [
-                'input[value="Search"]',
-                'button[type="submit"]',
-                'input[type="submit"]',
-                'button:contains("Search")',
-                'input[name*="submit"]',
-                '.search-btn',
-                '.btn-search',
-                '#search-btn',
-                'input[value*="Search" i]',
-                'button[onclick*="submit"]'
+            // Priority 1: Case search form buttons (NOT site search)
+            const formSelectors = [
+                '#search-case-number-form button[type="submit"]',
+                '#search-case-number-form input[type="submit"]',
+                'form:not([action*="search/node"]) button[type="submit"]',
+                'form:not([action*="search/node"]) input[type="submit"]',
+                'form:not(.search-form) button[type="submit"]',
+                'form:not(.search-form) input[type="submit"]'
             ];
             
-            for (const selector of buttonSelectors) {
-                try {
-                    let button;
+            for (const selector of formSelectors) {
+                const button = document.querySelector(selector);
+                if (button && !button.disabled) {
+                    // Double check it's not the main site search
+                    const isMainSearch = button.closest('.search-form') || 
+                                        button.closest('#search-form') ||
+                                        button.id === 'edit-submit';
                     
-                    if (selector.includes(':contains')) {
-                        // Handle :contains selector manually
-                        const buttons = document.querySelectorAll('button');
-                        button = Array.from(buttons).find(btn => 
-                            btn.textContent.toLowerCase().includes('search')
-                        );
-                    } else {
-                        button = document.querySelector(selector);
-                    }
-                    
-                    if (button && !button.disabled) {
-                        console.log(`Found button with selector: ${selector}`);
-                        console.log(`Button text: "${button.textContent || button.value}"`);
-                        
+                    if (!isMainSearch) {
+                        console.log(`Found case search button: ${selector}`);
                         button.click();
-                        return { 
-                            success: true, 
-                            selector: selector,
-                            buttonText: button.textContent || button.value || 'No text'
-                        };
-                    }
-                } catch (e) {
-                    console.log(`Error with selector ${selector}:`, e.message);
-                }
-            }
-            
-            // Last resort - try any button or input that might be a submit
-            const allButtons = document.querySelectorAll('button, input[type="submit"], input[type="button"]');
-            for (const btn of allButtons) {
-                const text = (btn.textContent || btn.value || '').toLowerCase();
-                if (text.includes('search') || text.includes('submit') || btn.type === 'submit') {
-                    try {
-                        btn.click();
-                        return {
-                            success: true,
-                            selector: 'fallback',
-                            buttonText: text
-                        };
-                    } catch (e) {
-                        console.log('Fallback button click failed:', e.message);
+                        return { success: true, selector: selector, type: 'case-form' };
                     }
                 }
             }
             
-            return { success: false, error: 'No search button found' };
+            // Priority 2: Generic submit buttons (but check context)
+            const genericSelectors = [
+                'input[value="Search"]:not(.search-form input)',
+                'button[type="submit"]:not(.search-form button)',
+                'input[type="submit"]:not(.search-form input)'
+            ];
+            
+            for (const selector of genericSelectors) {
+                const button = document.querySelector(selector);
+                if (button && !button.disabled) {
+                    const isMainSearch = button.closest('.search-form') || 
+                                        button.closest('#search-form') ||
+                                        button.id === 'edit-submit';
+                    
+                    if (!isMainSearch) {
+                        console.log(`Found generic button: ${selector}`);
+                        button.click();
+                        return { success: true, selector: selector, type: 'generic' };
+                    }
+                }
+            }
+            
+            // Priority 3: JavaScript form submission
+            const forms = document.querySelectorAll('form');
+            for (const form of forms) {
+                // Skip main site search forms
+                if (form.classList.contains('search-form') || 
+                    form.id === 'search-form' ||
+                    form.action.includes('search/node')) {
+                    continue;
+                }
+                
+                // Look for case search form indicators
+                const hasCapcha = form.querySelector('input[name*="captcha"]');
+                const hasCaseFields = form.querySelector('select[name="bench"]') || 
+                                     form.querySelector('select[name="case_type"]') ||
+                                     form.querySelector('input[name="cp_no"]');
+                
+                if (hasCapcha || hasCaseFields) {
+                    console.log('Submitting case search form via JavaScript');
+                    form.submit();
+                    return { success: true, selector: 'form.submit()', type: 'javascript' };
+                }
+            }
+            
+            return { success: false, error: 'No valid submit button found' };
         });
         
         if (!submitResult.success) {
-            console.log('❌ Could not find or click search button:', submitResult.error);
-            return { success: false, error: submitResult.error || 'Search button not found' };
+            console.log('❌ Could not find or click submit button');
+            return { success: false, error: 'Submit button not found' };
         }
         
-        console.log(`✅ Search button clicked: "${submitResult.buttonText}" (${submitResult.selector})`);
+        console.log(`✅ Submit button clicked successfully (${submitResult.selector})`);
         
-        // Wait for form submission and potential page change
+        // Wait for navigation (from testform.js approach)
         try {
-            await Promise.race([
-                page.waitForNavigation({ 
-                    waitUntil: ['domcontentloaded'], 
-                    timeout: 30000 
-                }),
-                page.waitForFunction(() => {
-                    return document.querySelector('table') || 
-                           document.body.textContent.includes('No Record Found') ||
-                           document.body.textContent.includes('Search Results');
-                }, { timeout: 30000 })
-            ]);
-        } catch (waitError) {
-            console.log('⚠️ Wait timeout - continuing anyway:', waitError.message);
+            console.log('⏳ Waiting for navigation to complete...');
+            const navResult = await navigationPromise;
+            if (navResult) {
+                console.log('✅ Navigation promise resolved');
+            } else {
+                console.log('⚠️ Navigation promise returned null, but continuing...');
+            }
+        } catch (navError) {
+            console.log('⚠️ Navigation promise failed (this might be normal):', navError.message);
         }
         
-        // Extended wait for results to load
-        await page.waitForTimeout(10000);
+        // Extended wait for page to settle (from testform.js)
+        await page.waitForTimeout(15000);
         
         const finalUrl = page.url();
-        console.log(`📍 Final URL after submission: ${finalUrl}`);
+        console.log(`📍 Current URL after submission: ${finalUrl}`);
         
-        return { success: true, url: finalUrl };
+        // Enhanced validation (from testform.js logic)
+        const pageAnalysis = await page.evaluate(() => {
+            return {
+                url: window.location.href,
+                title: document.title,
+                hasTable: document.querySelectorAll('table').length > 0,
+                tableCount: document.querySelectorAll('table').length,
+                bodyLength: document.body ? document.body.textContent.length : 0,
+                hasResultsContent: document.body ? (
+                    document.body.textContent.toLowerCase().includes('filing') ||
+                    document.body.textContent.toLowerCase().includes('case') ||
+                    document.body.textContent.toLowerCase().includes('petitioner') ||
+                    document.body.textContent.toLowerCase().includes('order')
+                ) : false,
+                hasErrorMessage: document.body ? (
+                    document.body.textContent.toLowerCase().includes('no record found') ||
+                    document.body.textContent.toLowerCase().includes('error')
+                ) : false
+            };
+        });
+        
+        console.log('📊 Page analysis after submission:', pageAnalysis);
+        
+        // Check if we ended up on wrong page (main site search)
+        if (finalUrl.includes('search/node')) {
+            console.log('❌ Redirected to main site search instead of case search');
+            return { success: false, error: 'Wrong search page - main site search instead of case search' };
+        }
+        
+        // Enhanced success criteria (from testform.js)
+        const urlChanged = finalUrl !== originalUrl;
+        const hasResults = pageAnalysis.hasTable || pageAnalysis.hasResultsContent;
+        const isResultsPage = finalUrl.includes('order-cp-wise-search') || 
+                             finalUrl.includes('case-details') ||
+                             urlChanged;
+        
+        console.log('🔍 Enhanced success criteria check:');
+        console.log(`  📍 URL changed: ${urlChanged}`);
+        console.log(`  🔗 On results page: ${isResultsPage}`);
+        console.log(`  📊 Has results content: ${pageAnalysis.hasResultsContent}`);
+        console.log(`  ❌ Has error: ${pageAnalysis.hasErrorMessage}`);
+        
+        if (pageAnalysis.hasErrorMessage && !hasResults) {
+            console.log('❌ Error detected with no results');
+            return { success: false, error: 'Error on results page with no data' };
+        }
+        
+        if (hasResults || isResultsPage || urlChanged) {
+            console.log('✅ Successfully submitted form and detected results page');
+            return { success: true, url: finalUrl };
+        } else {
+            console.log('⚠️ Uncertain success state, but continuing');
+            return { success: true, url: finalUrl, warning: 'Success uncertain' };
+        }
         
     } catch (error) {
         console.error('[submit] ❌ Form submission failed:', error.message);
@@ -829,89 +1059,332 @@ async function submitNCLTForm(page, searchParams) {
 // ...existing code...
 
 // Check for results (ENHANCED FROM TESTFORM.JS)
+ // Replace the existing checkForResults function
+// Replace your debugResultsPage function with this enhanced version
+
+async function debugResultsPage(page) {
+    console.log('🔍 Comprehensive page debugging...');
+    
+    try {
+        const pageDebug = await page.evaluate(() => {
+            // Get the actual rendered content
+            const bodyElement = document.body;
+            const fullText = bodyElement ? bodyElement.textContent : 'No body element';
+            
+            return {
+                url: window.location.href,
+                title: document.title,
+                hasBody: !!document.body,
+                bodyExists: !!bodyElement,
+                fullBodyText: fullText.substring(0, 3000), // First 3000 chars
+                bodyHTML: bodyElement ? bodyElement.innerHTML.substring(0, 3000) : 'No body HTML',
+                
+                // Check for specific content
+                hasFormElements: document.querySelectorAll('form, input, select').length,
+                hasTableElements: document.querySelectorAll('table').length,
+                hasDivElements: document.querySelectorAll('div').length,
+                
+                // Look for specific text indicators
+                containsCaptchaError: fullText.toLowerCase().includes('captcha') || fullText.toLowerCase().includes('wrong'),
+                containsNoRecords: fullText.toLowerCase().includes('no record') || fullText.toLowerCase().includes('not found'),
+                containsCaseInfo: fullText.toLowerCase().includes('filing') || fullText.toLowerCase().includes('case number'),
+                containsResultsKeywords: fullText.toLowerCase().includes('petitioner') || fullText.toLowerCase().includes('respondent'),
+                
+                // Check page state
+                readyState: document.readyState,
+                hasScripts: document.querySelectorAll('script').length,
+                
+                // Look for error messages
+                errorMessages: Array.from(document.querySelectorAll('.error, .alert, .message')).map(el => el.textContent.trim()),
+                
+                // Check for loading indicators
+                hasLoadingElements: document.querySelectorAll('.loading, .spinner, [class*="load"]').length
+            };
+        });
+        
+        console.log('📊 Comprehensive Page Debug:');
+        console.log('  URL:', pageDebug.url);
+        console.log('  Title:', pageDebug.title);
+        console.log('  Has Body:', pageDebug.hasBody);
+        console.log('  Ready State:', pageDebug.readyState);
+        console.log('  Form Elements:', pageDebug.hasFormElements);
+        console.log('  Table Elements:', pageDebug.hasTableElements);
+        console.log('  Div Elements:', pageDebug.hasDivElements);
+        console.log('  Scripts:', pageDebug.hasScripts);
+        console.log('  Loading Elements:', pageDebug.hasLoadingElements);
+        console.log('  Error Messages:', pageDebug.errorMessages);
+        console.log('');
+        console.log('🔍 Content Analysis:');
+        console.log('  Contains Captcha Error:', pageDebug.containsCaptchaError);
+        console.log('  Contains No Records:', pageDebug.containsNoRecords);
+        console.log('  Contains Case Info:', pageDebug.containsCaseInfo);
+        console.log('  Contains Results Keywords:', pageDebug.containsResultsKeywords);
+        console.log('');
+        console.log('📄 Full Body Text (first 3000 chars):');
+        console.log(pageDebug.fullBodyText);
+        console.log('');
+        console.log('📄 Body HTML (first 3000 chars):');
+        console.log(pageDebug.bodyHTML);
+        
+        return pageDebug;
+        
+    } catch (error) {
+        console.error('❌ Comprehensive debug failed:', error.message);
+        return null;
+    }
+}
+  
+ // Replace your checkForResults function with this enhanced version
+
 async function checkForResults(page) {
     try {
-        console.log('🔍 Enhanced results checking...');
+        console.log('🔍 Enhanced results checking with comprehensive debugging...');
         
-        // Wait for page to stabilize
-        await delay(5000);
+        await page.waitForTimeout(5000);
         
         const currentUrl = page.url();
         console.log(`[results] Current URL: ${currentUrl}`);
         
-        const pageAnalysis = await page.evaluate(() => {
-            return {
-                url: window.location.href,
-                title: document.title,
-                hasTable: document.querySelectorAll('table').length > 0,
-                tableCount: document.querySelectorAll('table').length,
-                bodyLength: document.body ? document.body.textContent.length : 0,
-                hasResultsContent: document.body ? (
-                    document.body.textContent.toLowerCase().includes('case') ||
-                    document.body.textContent.toLowerCase().includes('petition') ||
-                    document.body.textContent.toLowerCase().includes('order') ||
-                    document.body.textContent.toLowerCase().includes('filing') ||
-                    document.body.textContent.toLowerCase().includes('search results')
-                ) : false,
-                hasErrorMessage: (() => {
-                    if (!document.body) return false;
-                    
-                    const bodyText = document.body.textContent.toLowerCase();
-                    const errorKeywords = ['error', 'invalid', 'failed', 'not found', 'no records'];
-                    const excludeKeywords = ['old orders and judgments', 'header menu', 'skip to main content', 'footer'];
-                    
-                    for (const errorKeyword of errorKeywords) {
-                        if (bodyText.includes(errorKeyword)) {
-                            const contextFound = excludeKeywords.some(exclude => {
-                                const errorIndex = bodyText.indexOf(errorKeyword);
-                                const excludeIndex = bodyText.indexOf(exclude);
-                                return excludeIndex !== -1 && Math.abs(excludeIndex - errorIndex) < 100;
-                            });
-                            if (!contextFound) {
-                                return true;
-                            }
-                        }
+        // COMPREHENSIVE DEBUGGING
+        const initialDebug = await debugResultsPage(page);
+        
+        // Check if we're seeing CSS/HTML head content instead of body
+        if (initialDebug && (initialDebug.fullBodyText.includes('<link') || 
+                            initialDebug.fullBodyText.includes('stylesheet') ||
+                            !initialDebug.hasBody)) {
+            console.log('⚠️ Detected incomplete page load - CSS/head content visible');
+            
+            // Try to force page completion
+            console.log('🔄 Attempting to complete page load...');
+            
+            // Wait much longer for JavaScript
+            await page.waitForTimeout(20000);
+            
+            // Try to trigger content load
+            await page.evaluate(() => {
+                // Scroll to trigger any lazy loading
+                window.scrollTo(0, document.body.scrollHeight);
+                
+                // Try to trigger any form results
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
+                    if (submitBtn && !submitBtn.disabled) {
+                        try {
+                            submitBtn.click();
+                        } catch (e) {}
                     }
-                    return false;
-                })(),
-                snippet: document.body ? document.body.textContent.substring(0, 1000) : 'No body content'
+                });
+                
+                // Wait for any async operations
+                if (window.jQuery) {
+                    jQuery(document).ready(function() {
+                        console.log('jQuery ready triggered');
+                    });
+                }
+                
+                return true;
+            });
+            
+            await page.waitForTimeout(15000);
+            
+            // Re-debug after fixes
+            console.log('🔍 Re-debugging after page completion attempts...');
+            await debugResultsPage(page);
+        }
+        
+        // If still showing head content, try navigation refresh
+        const finalCheck = await page.evaluate(() => {
+            const bodyText = document.body ? document.body.textContent : '';
+            return {
+                stillShowingCSS: bodyText.includes('<link') || bodyText.includes('stylesheet'),
+                hasActualContent: bodyText.length > 500 && !bodyText.includes('<link'),
+                bodyTextSample: bodyText.substring(0, 500)
             };
         });
         
-        console.log('📊 Enhanced page analysis:', {
-            hasTable: pageAnalysis.hasTable,
-            tableCount: pageAnalysis.tableCount,
-            hasResultsContent: pageAnalysis.hasResultsContent,
-            hasErrorMessage: pageAnalysis.hasErrorMessage
-        });
-        
-        if (pageAnalysis.hasErrorMessage) {
-            console.log('⚠️ Error detected on page, but checking if results are still available...');
+        if (finalCheck.stillShowingCSS && !finalCheck.hasActualContent) {
+            console.log('❌ Page still showing CSS content - likely form submission failed');
+            console.log('🔄 Attempting page refresh...');
             
-            if (pageAnalysis.hasTable && pageAnalysis.tableCount > 0) {
-                console.log('✅ Tables found despite error message, proceeding with extraction');
-                return { success: true, hasResults: true, warning: 'Error message detected but results available' };
-            } else {
-                return { success: false, error: 'Error message detected with no results', errorType: 'NO_CASE_FOUND' };
+            try {
+                await page.reload({ waitUntil: ['domcontentloaded', 'networkidle2'], timeout: 60000 });
+                await page.waitForTimeout(10000);
+                
+                console.log('🔍 Post-refresh debugging...');
+                await debugResultsPage(page);
+            } catch (refreshError) {
+                console.log('⚠️ Page refresh failed:', refreshError.message);
             }
         }
         
-        const hasResults = pageAnalysis.hasTable || pageAnalysis.hasResultsContent || pageAnalysis.bodyLength > 2000;
+        // Enhanced content analysis
+        const pageAnalysis = await page.evaluate(() => {
+            const bodyText = document.body ? document.body.textContent.toLowerCase() : '';
+            const tables = document.querySelectorAll('table');
+            
+            // Enhanced error detection
+            const errorPatterns = [
+                'no record found',
+                'no records found', 
+                'case not found',
+                'invalid case number',
+                'incorrect captcha',
+                'captcha verification failed',
+                'no data available',
+                'wrong captcha',
+                'captcha mismatch',
+                'please enter correct captcha',
+                'verification failed'
+            ];
+            
+            // Enhanced success indicators
+            const successPatterns = [
+                'filing number',
+                'filing no',
+                'case details',
+                'party name',
+                'petitioner',
+                'respondent',
+                'listing date',
+                'order',
+                'judgment',
+                'case no',
+                'status',
+                'c.p.',
+                'cp(',
+                'case number',
+                'diary number',
+                'serial number'
+            ];
+            
+            const hasError = errorPatterns.some(pattern => bodyText.includes(pattern));
+            const hasSuccess = successPatterns.some(pattern => bodyText.includes(pattern));
+            
+            // Check for case-specific tables
+            let hasCaseTable = false;
+            let caseTableInfo = [];
+            
+            tables.forEach((table, index) => {
+                const tableText = table.textContent.toLowerCase();
+                const tableInfo = {
+                    index,
+                    rows: table.querySelectorAll('tr').length,
+                    hasFilingHeader: tableText.includes('filing'),
+                    hasCaseHeader: tableText.includes('case'),
+                    hasPetitionerHeader: tableText.includes('petitioner'),
+                    hasStatusHeader: tableText.includes('status'),
+                    hasSerialHeader: tableText.includes('s.no') || tableText.includes('serial'),
+                    textSample: table.textContent.trim().substring(0, 300)
+                };
+                
+                if (tableInfo.hasFilingHeader || tableInfo.hasCaseHeader || 
+                    tableInfo.hasPetitionerHeader || tableInfo.hasStatusHeader ||
+                    tableInfo.hasSerialHeader) {
+                    hasCaseTable = true;
+                    caseTableInfo.push(tableInfo);
+                }
+            });
+            
+            return {
+                url: window.location.href,
+                title: document.title,
+                hasTable: tables.length > 0,
+                tableCount: tables.length,
+                hasCaseTable: hasCaseTable,
+                caseTableInfo: caseTableInfo,
+                bodyLength: bodyText.length,
+                hasError: hasError,
+                hasSuccess: hasSuccess,
+                errorType: hasError ? errorPatterns.find(p => bodyText.includes(p)) : null,
+                successType: hasSuccess ? successPatterns.find(p => bodyText.includes(p)) : null,
+                hasResultsContent: hasSuccess || hasCaseTable || (bodyText.includes('case') && bodyText.length > 2000),
+                captchaRelatedError: hasError && (bodyText.includes('captcha') || bodyText.includes('wrong') || bodyText.includes('incorrect') || bodyText.includes('verification')),
+                showingCSSContent: bodyText.includes('<link') || bodyText.includes('stylesheet'),
+                actualContentLength: bodyText.replace(/\s+/g, ' ').length
+            };
+        });
         
-        if (hasResults) {
-            console.log('✅ Enhanced results check: Results found');
-            return { success: true, hasResults: true };
-        } else {
-            console.log('❌ Enhanced results check: No results found');
-            return { success: true, hasResults: false, errorType: 'NO_CASE_FOUND', message: 'No records found' };
+        console.log('📊 Final Enhanced Analysis:', {
+            hasTable: pageAnalysis.hasTable,
+            tableCount: pageAnalysis.tableCount,
+            hasCaseTable: pageAnalysis.hasCaseTable,
+            hasResultsContent: pageAnalysis.hasResultsContent,
+            hasErrorMessage: pageAnalysis.hasError,
+            captchaError: pageAnalysis.captchaRelatedError,
+            showingCSS: pageAnalysis.showingCSSContent,
+            contentLength: pageAnalysis.actualContentLength
+        });
+        
+        if (pageAnalysis.caseTableInfo && pageAnalysis.caseTableInfo.length > 0) {
+            console.log('📋 Case table details:');
+            pageAnalysis.caseTableInfo.forEach(table => {
+                console.log(`  Table ${table.index}: ${table.rows} rows`);
+                console.log(`    Sample: "${table.textSample}"`);
+            });
         }
+        
+        // Check for CSS/incomplete page
+        if (pageAnalysis.showingCSSContent || pageAnalysis.actualContentLength < 100) {
+            console.log('❌ Page showing CSS content or very short - form submission likely failed');
+            return { 
+                success: true, 
+                hasResults: false, 
+                error: 'Page showing CSS content instead of results - likely captcha failure',
+                errorType: 'FORM_SUBMISSION_FAILED' 
+            };
+        }
+        
+        // Check for captcha-related errors
+        if (pageAnalysis.captchaRelatedError) {
+            console.log('❌ Captcha-related error detected - form submission failed');
+            return { 
+                success: true, 
+                hasResults: false, 
+                error: `Captcha error: ${pageAnalysis.errorType}`,
+                errorType: 'CAPTCHA_FAILED' 
+            };
+        }
+        
+        // Enhanced result determination
+        if (pageAnalysis.hasError && !pageAnalysis.hasSuccess && !pageAnalysis.hasCaseTable) {
+            if (pageAnalysis.hasTable && pageAnalysis.tableCount > 0) {
+                console.log('✅ Tables found despite error message, proceeding with extraction');
+                return { success: true, hasResults: true, warning: 'Error detected but tables available' };
+            } else {
+                console.log('[result] No NCLT records found - case does not exist or form submission failed');
+                return { 
+                    success: true, 
+                    hasResults: false, 
+                    error: `Error detected: ${pageAnalysis.errorType}`,
+                    errorType: pageAnalysis.captchaRelatedError ? 'CAPTCHA_FAILED' : 'NO_CASE_FOUND' 
+                };
+            }
+        }
+        
+        if (pageAnalysis.hasCaseTable || pageAnalysis.hasSuccess || pageAnalysis.hasResultsContent) {
+            console.log('✅ Case-specific results found');
+            return { success: true, hasResults: true };
+        }
+        
+        if (pageAnalysis.hasTable && pageAnalysis.bodyLength > 2000) {
+            console.log('⚠️ General tables found with substantial content');
+            return { success: true, hasResults: true, warning: 'General results detected' };
+        }
+        
+        console.log('[result] No NCLT records found - likely form submission failed or case does not exist');
+        return { 
+            success: true, 
+            hasResults: false, 
+            errorType: 'NO_CASE_FOUND',
+            message: 'No case records found - check form submission or case parameters'
+        };
         
     } catch (error) {
         console.error('❌ Error in enhanced results check:', error.message);
         return { success: false, error: error.message };
     }
 }
-
 // Get page info for debugging
 async function getPageInfo(page) {
     try {
@@ -1143,8 +1616,10 @@ async function extractDetailedCaseInfo(page, statusLink, rowData) {
 }
 
 // Extract comprehensive case details (FROM TESTFORM.JS)
+ // Replace the extractComprehensiveCaseDetails function with this FIXED version:
+
 async function extractComprehensiveCaseDetails(page) {
-    console.log('      📊 Extracting comprehensive case details with PDF links...');
+    console.log('      📊 Extracting comprehensive case details with ENHANCED HTML parsing...');
     
     try {
         await delay(3000);
@@ -1163,41 +1638,69 @@ async function extractComprehensiveCaseDetails(page) {
                 allSections: []
             };
             
-            // Expand all collapsible sections
-            const expandButtons = document.querySelectorAll('button[data-toggle="collapse"], .btn[data-toggle="collapse"], [aria-expanded="false"]');
-            expandButtons.forEach(button => {
-                try {
-                    if (button.getAttribute('aria-expanded') === 'false') {
-                        button.click();
-                    }
-                } catch (e) {
-                    // Continue if click fails
-                }
-            });
+            console.log('🔍 Starting HTML parsing for case details...');
             
+            // ENHANCED: Look for the specific HTML table structure you showed
             const allTables = document.querySelectorAll('table');
+            console.log(`Found ${allTables.length} tables on page`);
             
             allTables.forEach((table, tableIndex) => {
+                console.log(`Processing table ${tableIndex + 1}...`);
                 const rows = table.querySelectorAll('tr');
                 
-                // Process key-value pairs for basic info
-                const firstRow = rows[0];
-                if (firstRow && firstRow.querySelectorAll('td, th').length === 2) {
-                    rows.forEach(row => {
-                        const cells = row.querySelectorAll('td');
-                        if (cells.length === 2) {
-                            const key = cells[0].textContent.trim();
-                            const value = cells[1].textContent.trim();
-                            
-                            if (key && value && key.length < 200) {
-                                const cleanKey = key.replace(/[:\s]+$/, '').trim();
-                                details.basicCaseInfo[cleanKey] = value.trim();
-                            }
+                // SPECIFIC PARSING for your HTML structure
+                rows.forEach((row, rowIndex) => {
+                    const cells = row.querySelectorAll('td');
+                    
+                    // Handle 2-cell rows (key-value pairs)
+                    if (cells.length === 2) {
+                        const key = cells[0].textContent.trim();
+                        const value = cells[1].textContent.trim();
+                        
+                        if (key && value && key.length < 200) {
+                            const cleanKey = key.replace(/[:\s]+$/, '').trim();
+                            details.basicCaseInfo[cleanKey] = value.trim();
+                            console.log(`Extracted: "${cleanKey}" = "${value}"`);
                         }
-                    });
-                }
+                    }
+                    
+                    // Handle 4-cell rows (your specific structure)
+                    else if (cells.length === 4) {
+                        // First pair: cells[0] and cells[1]
+                        const key1 = cells[0].textContent.trim();
+                        const value1 = cells[1].textContent.trim();
+                        
+                        if (key1 && value1 && key1.length < 200) {
+                            const cleanKey1 = key1.replace(/[:\s]+$/, '').trim();
+                            details.basicCaseInfo[cleanKey1] = value1.trim();
+                            console.log(`Extracted (4-cell): "${cleanKey1}" = "${value1}"`);
+                        }
+                        
+                        // Second pair: cells[2] and cells[3]
+                        const key2 = cells[2].textContent.trim();
+                        const value2 = cells[3].textContent.trim();
+                        
+                        if (key2 && value2 && key2.length < 200) {
+                            const cleanKey2 = key2.replace(/[:\s]+$/, '').trim();
+                            details.basicCaseInfo[cleanKey2] = value2.trim();
+                            console.log(`Extracted (4-cell): "${cleanKey2}" = "${value2}"`);
+                        }
+                    }
+                    
+                    // Handle rows with colspan (like Party Name row)
+                    else if (cells.length === 3) {
+                        const key = cells[0].textContent.trim();
+                        const value = cells[1].textContent.trim(); // This might have colspan="3"
+                        
+                        if (key && value && key.length < 200) {
+                            const cleanKey = key.replace(/[:\s]+$/, '').trim();
+                            details.basicCaseInfo[cleanKey] = value.trim();
+                            console.log(`Extracted (3-cell): "${cleanKey}" = "${value}"`);
+                        }
+                    }
+                });
                 
-                // Process listing history tables
+                // Enhanced listing history processing
                 const headerRow = table.querySelector('tr');
                 if (headerRow) {
                     const headers = Array.from(headerRow.querySelectorAll('th, td')).map(cell => 
@@ -1239,6 +1742,7 @@ async function extractComprehensiveCaseDetails(page) {
                                             const pdfInfo = {
                                                 text: linkText,
                                                 href: linkHref,
+                                                url: linkHref,
                                                 cellHeader: header,
                                                 dateContext: cellText
                                             };
@@ -1258,15 +1762,201 @@ async function extractComprehensiveCaseDetails(page) {
                 }
             });
             
+            // Enhanced debug logging
+            console.log('📊 Extraction Results:');
+            console.log(`Basic Info Keys: ${Object.keys(details.basicCaseInfo).length}`);
+            Object.keys(details.basicCaseInfo).forEach(key => {
+                console.log(`  "${key}": "${details.basicCaseInfo[key]}"`);
+            });
+            console.log(`Listing History: ${details.listingHistory.length} entries`);
+            console.log(`PDF Links: ${details.pdfLinks.length} links`);
+            
             return details;
         });
         
-        console.log(`      ✅ Comprehensive extraction completed: ${Object.keys(caseDetails.basicCaseInfo).length} basic fields, ${caseDetails.listingHistory.length} listing entries, ${caseDetails.pdfLinks.length} PDF links`);
+        console.log(`      ✅ ENHANCED extraction completed: ${Object.keys(caseDetails.basicCaseInfo).length} basic fields, ${caseDetails.listingHistory.length} listing entries, ${caseDetails.pdfLinks.length} PDF links`);
+        
+        // Debug the extracted fields
+        console.log('      🔍 Extracted Basic Case Info:');
+        Object.keys(caseDetails.basicCaseInfo).forEach(key => {
+            console.log(`      📋 "${key}": "${caseDetails.basicCaseInfo[key]}"`);
+        });
         
         return caseDetails;
         
     } catch (error) {
         console.log(`      ❌ Failed to extract comprehensive details: ${error.message}`);
+        return null;
+    }
+}
+// Add this new function after your existing extractTableData function
+
+// Comprehensive data extraction based on testform.js success patterns
+async function extractCompleteNCLTData(page) {
+    console.log('📊 Extracting Complete NCLT Data (testform.js pattern)...');
+    
+    try {
+        await page.waitForTimeout(5000);
+        
+        const completeData = [];
+        
+        console.log('📋 Step 1: Extracting search results table...');
+        const searchResults = await extractSearchResultsTable(page);
+        
+        if (searchResults && searchResults.length > 0) {
+            console.log(`✅ Found ${searchResults.length} search result(s)`);
+            
+            for (let i = 0; i < searchResults.length; i++) {
+                const result = searchResults[i];
+                console.log(`🔍 Processing case ${i + 1}/${searchResults.length}...`);
+                
+                const statusLinks = result.rows[0]?.statusLinks || [];
+                
+                if (statusLinks.length > 0) {
+                    console.log(`📎 Found ${statusLinks.length} status link(s)`);
+                    
+                    for (const statusLink of statusLinks) {
+                        const detailedInfo = await extractDetailedCaseInfo(page, statusLink, result.rows[0]);
+                        
+                        const completeCase = {
+                            searchResult: result,
+                            detailedCaseInfo: detailedInfo,
+                            extractedAt: new Date().toISOString()
+                        };
+                        
+                        completeData.push(completeCase);
+                        console.log(`✅ Complete case data extracted`);
+                    }
+                } else {
+                    const basicCase = {
+                        searchResult: result,
+                        detailedCaseInfo: null,
+                        extractedAt: new Date().toISOString(),
+                        note: 'No status links found'
+                    };
+                    
+                    completeData.push(basicCase);
+                    console.log(`📋 Added basic search result`);
+                }
+            }
+        } else {
+            console.log('❌ No search results found');
+        }
+        
+        return completeData;
+        
+    } catch (error) {
+        console.error('❌ Complete extraction failed:', error.message);
+        return null;
+    }
+}
+
+// Enhanced search results table extraction (from testform.js)
+async function extractSearchResultsTable(page) {
+    console.log('📊 Extracting search results table (testform.js pattern)...');
+    
+    const results = await page.evaluate(() => {
+        const tables = document.querySelectorAll('table');
+        const extractedResults = [];
+        
+        tables.forEach((table, tableIndex) => {
+            const rows = Array.from(table.querySelectorAll('tr'));
+            
+            if (rows.length > 1) {
+                const headers = Array.from(rows[0].querySelectorAll('th, td')).map(cell => 
+                    cell.textContent.trim()
+                );
+                
+                // Check for case-related headers
+                const hasCaseHeaders = headers.some(header => 
+                    header.toLowerCase().includes('filing') ||
+                    header.toLowerCase().includes('case') ||
+                    header.toLowerCase().includes('petitioner') ||
+                    header.toLowerCase().includes('status')
+                );
+                
+                if (!hasCaseHeaders) return;
+                
+                const dataRows = rows.slice(1).map((row, rowIndex) => {
+                    const cells = Array.from(row.querySelectorAll('td, th'));
+                    const rowData = {
+                        rowIndex: rowIndex + 1,
+                        data: {},
+                        statusLinks: [],
+                        allLinks: []
+                    };
+                    
+                    cells.forEach((cell, cellIndex) => {
+                        const header = headers[cellIndex] || `Column_${cellIndex + 1}`;
+                        const cellText = cell.textContent.trim();
+                        
+                        rowData.data[header] = cellText;
+                        
+                        // Extract links
+                        const links = cell.querySelectorAll('a');
+                        if (links.length > 0) {
+                            links.forEach(link => {
+                                const onclick = link.getAttribute('onclick');
+                                const href = link.href;
+                                const linkText = link.textContent.trim();
+                                
+                                const linkInfo = {
+                                    text: linkText,
+                                    href: href,
+                                    onclick: onclick,
+                                    cellHeader: header,
+                                    isClickable: !!onclick || (href && href !== window.location.href + '#'),
+                                    isStatusLink: linkText.toLowerCase().includes('pending') ||
+                                                 linkText.toLowerCase().includes('disposed') ||
+                                                 linkText.toLowerCase().includes('status') ||
+                                                 header.toLowerCase().includes('status'),
+                                    isPDFLink: linkText.toLowerCase().includes('pdf') ||
+                                              linkText.toLowerCase().includes('view') ||
+                                              href.toLowerCase().includes('pdf')
+                                };
+                                
+                                rowData.allLinks.push(linkInfo);
+                                
+                                if (linkInfo.isStatusLink) {
+                                    rowData.statusLinks.push(linkInfo);
+                                }
+                            });
+                        }
+                    });
+                    
+                    return rowData;
+                }).filter(row => 
+                    Object.values(row.data).some(value => 
+                        typeof value === 'string' && value.length > 0
+                    )
+                );
+                
+                if (dataRows.length > 0) {
+                    extractedResults.push({
+                        tableIndex: tableIndex + 1,
+                        headers,
+                        rows: dataRows,
+                        rowCount: dataRows.length,
+                        statusLinkCount: dataRows.reduce((count, row) => count + row.statusLinks.length, 0),
+                        totalLinkCount: dataRows.reduce((count, row) => count + row.allLinks.length, 0)
+                    });
+                }
+            }
+        });
+        
+        return extractedResults.length > 0 ? extractedResults : null;
+    });
+    
+    if (results && results.length > 0) {
+        console.log('✅ Search results extracted successfully');
+        
+        results.forEach(table => {
+            console.log(`📊 Table ${table.tableIndex}: ${table.rowCount} rows, ${table.statusLinkCount} status links`);
+        });
+        
+        return results;
+    } else {
+        console.log('❌ No search results extracted');
         return null;
     }
 }
@@ -1445,9 +2135,11 @@ module.exports = {
     BENCH_MAPPING,
     
     // Enhanced functions from testform.js
+    extractCompleteNCLTData,
+    extractSearchResults,
     extractDetailedCaseInfo,
     extractComprehensiveCaseDetails,
-    
+    debugResultsPage,
     // Legacy function stubs for compatibility
     extractTableDataEnhanced: extractTableData,
     selectBench: () => {},

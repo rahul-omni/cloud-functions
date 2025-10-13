@@ -1,14 +1,15 @@
 const https = require('https');
 
-// Test with the exact same parameters that worked locally
+// Test with automatic AI captcha solving
 const data = JSON.stringify({
     bench: "Mumbai",
     case_type: "CP(AA) Merger and Amalgamation(Companies Act)",
     cp_no: "146",
     year: "2022"
+    // No manual captcha - let AI solve it automatically
 });
 
-console.log('Testing NCLT Court Scraper with payload:');
+console.log('Testing NCLT Court Scraper with automatic AI captcha solving:');
 console.log(JSON.parse(data));
 console.log('\nSending request...\n');
 
@@ -25,35 +26,26 @@ const options = {
 const req = https.request(options, (res) => {
     let body = '';
     
+    console.log(`Response Status: ${res.statusCode}`);
+    console.log('Response Headers:', res.headers);
+    
     res.on('data', (chunk) => {
         body += chunk;
     });
     
     res.on('end', () => {
-        console.log('Response Status:', res.statusCode);
-        console.log('Response Headers:', res.headers);
-        
         try {
-            const jsonResponse = JSON.parse(body);
-            console.log('\n=== RESPONSE ANALYSIS ===');
-            console.log('Success:', jsonResponse.success);
-            console.log('Total Records:', jsonResponse.total_records);
-            console.log('Message:', jsonResponse.message);
-            console.log('Error Type:', jsonResponse.errorType || 'None');
+            const response = JSON.parse(body);
             
-            if (jsonResponse.success && jsonResponse.total_records > 0) {
-                console.log('\n✅ SUCCESS - Found records!');
-                console.log('Court Name:', jsonResponse.court_name);
-                console.log('Data Count:', jsonResponse.data?.length || 0);
-                
-                if (jsonResponse.data && jsonResponse.data.length > 0) {
-                    const firstCase = jsonResponse.data[0];
-                    console.log('\nFirst Case Details:');
-                    console.log('- Filing Number:', firstCase.filingNumber);
-                    console.log('- Case Number:', firstCase.caseNumber);
-                    console.log('- Party Name:', firstCase.partyName);
-                    console.log('- PDF Links:', firstCase.pdfLinks?.length || 0);
-                }
+            console.log('\n=== RESPONSE ANALYSIS ===');
+            console.log('Success:', response.success);
+            console.log('Total Records:', response.total_records || 0);
+            console.log('Message:', response.message || 'None');
+            console.log('Error Type:', response.error_type || 'None');
+            
+            if (response.total_records > 0) {
+                console.log('\n✅ RECORDS FOUND');
+                console.log('Data Preview:', JSON.stringify(response.data?.slice(0, 1), null, 2));
             } else {
                 console.log('\n❌ NO RECORDS FOUND');
                 console.log('Possible reasons:');
@@ -63,17 +55,17 @@ const req = https.request(options, (res) => {
             }
             
             console.log('\n=== FULL RESPONSE ===');
-            console.log(JSON.stringify(jsonResponse, null, 2));
+            console.log(JSON.stringify(response, null, 2));
             
         } catch (parseError) {
-            console.error('Failed to parse JSON response:', parseError.message);
-            console.log('Raw response body:', body);
+            console.error('Failed to parse response:', parseError.message);
+            console.log('Raw response:', body);
         }
     });
 });
 
 req.on('error', (error) => {
-    console.error('Request Error:', error);
+    console.error('Request failed:', error.message);
 });
 
 req.setTimeout(600000, () => {
