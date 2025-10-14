@@ -1,5 +1,92 @@
 const db = require('../../config/database');
 
+<<<<<<< HEAD
+=======
+const insertCauselistFiles = async (results, formData = {}) => {
+  console.log('[debug] [db] Inserting causelist files into database...');
+  if (!Array.isArray(results) || results.length === 0) {
+    console.log('[debug] [db] No results to insert.');
+    return { inserted: 0, errors: [] };
+  }
+
+  const insertSql = `
+    INSERT INTO cause_list_files (
+      serial_number,
+      city,
+      court,
+      district,
+      date,
+      search_by,
+      list_type,
+      cause_list_type,
+      main_and_supply,
+      link,
+      created_at,
+      updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW()
+    ) RETURNING id`;
+
+  let inserted = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (const row of results) {
+    // Extract the first PDF link URL if available
+    const linkUrl = row?.causeListLinks && row.causeListLinks.length > 0 
+      ? row.causeListLinks[0].url 
+      : '';
+
+    const m_and_s = row?.File?.includes("Main") ? "Main" : "Supplementry";
+
+    const params = [
+      row?.["Serial Number"] ?? '',              // $1  serial_number
+      formData?.city ?? '',                      // $2  city
+      "Supreme Court",                     // $3  court
+      formData?.district ?? '',                  // $4  district
+      formData?.listingDate ?? '',                      // $5  date
+      formData?.searchBy ?? '',                  // $6  search_by
+      formData?.listType ?? '',                  // $7  list_type
+      formData?.causelistType ?? '',             // $8  cause_list_type
+      m_and_s ?? '',       // $9  main_and_supply
+      linkUrl                                    // $10 link
+    ];
+
+    try {
+      // Existence check: same serial_number, court, date, and link
+      const existsSql = `
+        SELECT 1 FROM cause_list_files
+        WHERE COALESCE(serial_number,'') = COALESCE($1,'')
+          AND court = $2
+          AND date = $3
+          AND COALESCE(link,'') = COALESCE($4,'')
+        LIMIT 1
+      `;
+      const existsParams = [
+        params[0], // serial_number
+        params[2], // court
+        params[4], // date
+        params[9]  // link
+      ];
+      const existsRes = await db.query(existsSql, existsParams);
+      if (existsRes.rows && existsRes.rows.length > 0) {
+        skipped += 1;
+        continue;
+      }
+
+      await db.query(insertSql, params);
+      inserted += 1;
+    } catch (err) {
+      console.error('[error] [db] Failed to insert causelist file row:', err?.message);
+      errors.push({ row, error: err?.message });
+    }
+  }
+
+  console.log(`[debug] [db] Causelist files insert complete. Inserted: ${inserted}, Skipped: ${skipped}, Errors: ${errors.length}`);
+  return { inserted, skipped, errors };
+}
+
+>>>>>>> 556fe3d769de4993646ca29c4889636bbd1734c8
 const insertCauselist = async (results) => {
   console.log('[debug] [db] Inserting causelist into database...');
   if (!Array.isArray(results) || results.length === 0) {
@@ -10,6 +97,7 @@ const insertCauselist = async (results) => {
   const insertSql = `
     INSERT INTO cause_list (
       id,
+<<<<<<< HEAD
       serial_number,
       dairy_number,
       case_number,
@@ -32,6 +120,13 @@ const insertCauselist = async (results) => {
       updated_at
     ) VALUES (
       gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW()
+=======
+      user_id,
+      case_id,
+      created_at
+    ) VALUES (
+      gen_random_uuid(), $1, $2, NOW()
+>>>>>>> 556fe3d769de4993646ca29c4889636bbd1734c8
     ) RETURNING id`;
 
   let inserted = 0;
@@ -40,6 +135,7 @@ const insertCauselist = async (results) => {
 
   for (const row of results) {
     const params = [
+<<<<<<< HEAD
       row?.serialNumber ?? '',                  // $1  serial_number
       row?.diaryNumber ?? '',                   // $2  dairy_number (schema uses "dairy_number")
       row?.caseNumber ?? '',                    // $3  case_number
@@ -82,6 +178,13 @@ const insertCauselist = async (results) => {
         continue;
       }
 
+=======
+      row?.user_id ?? '',
+      row?.case_id ?? '',
+    ];
+
+    try {
+>>>>>>> 556fe3d769de4993646ca29c4889636bbd1734c8
       await db.query(insertSql, params);
       inserted += 1;
     } catch (err) {
@@ -94,6 +197,79 @@ const insertCauselist = async (results) => {
   return { inserted, skipped, errors };
 }
 
+<<<<<<< HEAD
 module.exports = {
   insertCauselist
+=======
+const getSubscribedCases = async () => {
+  const sql = `
+      WITH rows_to_update AS (
+      SELECT uc.id
+      FROM user_cases uc
+      JOIN users u ON uc.user_id = u.id
+      WHERE (uc.last_synced IS NULL OR uc.last_synced::date <> CURRENT_DATE)
+        AND uc.court = 'Supreme Court'
+      LIMIT 100
+  )
+  UPDATE user_cases uc
+  SET last_synced = NOW()
+  FROM users u, rows_to_update r
+  WHERE uc.id = r.id
+    AND uc.user_id = u.id
+  RETURNING 
+    u.id AS user_id,
+    uc.case_number,
+    uc.id AS case_id, 
+    u.email,
+    uc.diary_number,
+    u.mobile_number,
+    uc.last_synced;`;
+
+  const { rows } = await db.query(sql);
+  return rows;
+};
+
+const insertNotifications = async (diary_number, user_id, method, contact, message) => {
+  const sql = `
+    INSERT INTO notifications (
+      id,
+      dairy_number,
+      user_id,
+      method,
+      contact,
+      message,
+      status,
+      created_at
+    ) VALUES (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      CURRENT_TIMESTAMP
+    )
+    RETURNING id, method;
+  `;
+
+  const values = [
+    diary_number,
+    user_id,
+    method,
+    contact,
+    message,
+    'pending'
+  ];
+
+  const result = await db.query(sql, values);
+  return result.rows[0];
+};
+
+module.exports = {
+  insertCauselist,
+  insertCauselistFiles,
+  getSubscribedCases,
+  insertNotifications
+>>>>>>> 556fe3d769de4993646ca29c4889636bbd1734c8
 };
