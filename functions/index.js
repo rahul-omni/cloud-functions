@@ -7,7 +7,9 @@ const { fetchHighCourtJudgments } = require("./src/highCourtScrapper/index.js");
 const { fetchDistrictCourtJudgments } = require("./src/districtCourtScrapper/index.js");
 const { supremeCourtOTF } = require("./src/supremeCourtScrapper/index.js");
 const { scCauseListScrapper } = require("./src/scCauseListScrapper/index.js");
+const { hcCauseListScrapper } = require("./src/hcCauseListScrapper/index.js");
 const { cronForSCCauseList } = require("./src/services/CronServiceCauseList.js");
+const {tentativeDateSC} = require("./src/tentativeDateSC/index.js");
 
 module.exports = {
   // scrapeSupremeCourtCasesAPI,
@@ -19,5 +21,7 @@ module.exports = {
   fetchDistrictCourtJudgments,
   supremeCourtOTF,
   scCauseListScrapper,
-  cronForSCCauseList
+  cronForSCCauseList,
+  hcCauseListScrapper,
+  tentativeDateSC
 };

@@ -1,7 +1,7 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
 const { fetchSupremeCourtCauseList } = require('./scCauseListScrapper');
-const { getSubscribedCases, insertNotifications, insertCauselist } = require('./components/db');
+const { getSubscribedCases, insertNotifications, insertCauselist, updateUserCase } = require('./components/db');
 const pdfParse = require("pdf-parse");
 const axios = require('axios');
 const { processWhatsAppNotifications, processWhatsAppNotificationsWithTemplate } = require("../notification/processWhatsappNotification");
@@ -149,14 +149,13 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
               });
 
               await processWhatsAppNotificationsWithTemplate(id, 'order_status', [caseMatch ? case_number : diary_number, formattedDate, url]);
+              await updateUserCase(case_id, formattedDate);
             } catch (notifyErr) {
               console.error(`[error] Failed to notify user ${user_id} for case ${case_number || diary_number}:`, notifyErr);
             }
           }
         }
       }
-
-      await insertCauselist(causeList);
 
       return res.status(200).json({
         success: true,

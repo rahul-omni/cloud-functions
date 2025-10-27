@@ -131,7 +131,7 @@ const getSubscribedCases = async () => {
       FROM user_cases uc
       JOIN users u ON uc.user_id = u.id
       WHERE (uc.last_synced IS NULL OR uc.last_synced::date <> CURRENT_DATE)
-        AND uc.court = 'Supreme Court'
+        AND uc.court = 'High Court'
       LIMIT 100
   )
   UPDATE user_cases uc
@@ -150,21 +150,6 @@ const getSubscribedCases = async () => {
 
   const { rows } = await db.query(sql);
   return rows;
-};
-
-const updateUserCase = async (id, dateString) => {
-  // Convert DD-MM-YYYY → YYYY-MM-DD
-  const [day, month, year] = dateString.split('-');
-  const formattedDate = `${year}-${month}-${day}`;
-
-  const sql = `
-    UPDATE user_cases
-    SET tentative_date = $1
-    WHERE id = $2
-    RETURNING *;
-  `;
-  const { rows } = await db.query(sql, [formattedDate, id]);
-  return rows[0];
 };
 
 const insertNotifications = async (diary_number, user_id, method, contact, message) => {
@@ -202,6 +187,21 @@ const insertNotifications = async (diary_number, user_id, method, contact, messa
 
   const result = await db.query(sql, values);
   return result.rows[0];
+};
+
+const updateUserCase = async (id, dateString) => {
+  // Convert DD-MM-YYYY → YYYY-MM-DD
+  const [day, month, year] = dateString.split('-');
+  const formattedDate = `${year}-${month}-${day}`;
+
+  const sql = `
+    UPDATE user_cases
+    SET tentative_date = $1
+    WHERE id = $2
+    RETURNING *;
+  `;
+  const { rows } = await db.query(sql, [formattedDate, id]);
+  return rows[0];
 };
 
 module.exports = {

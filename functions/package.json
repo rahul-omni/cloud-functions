@@ -22,6 +22,7 @@
     "firebase-functions": "^5.1.1",
     "openai": "^4.67.3",
     "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^2.16.105",
     "pg": "^8.11.3",
     "puppeteer-core": "^10.4.0"
   },
