@@ -41,13 +41,6 @@ const fetchSupremeCourtCauseList = async (formData) => {
     await waitForResults(page);
     const rows = await extractTableData(page);
     
-<<<<<<< HEAD
-    // Transform data for database
-    const transformedRows = transformData(rows, formData);
-
-    return transformedRows;
-
-=======
     // // Transform data for database
     // const transformedRows = transformData(rows, formData);
 
@@ -55,7 +48,6 @@ const fetchSupremeCourtCauseList = async (formData) => {
 
     return rows;
 
->>>>>>> 556fe3d769de4993646ca29c4889636bbd1734c8
 
     } catch (error) {
       console.error('[error] [fetchSupremeCourtCauseList] Failed to get results:', error.message);

@@ -9,6 +9,7 @@ const { fetchNCLTCourtJudgments } = require("./src/ncltCourtScrapper/index.js");
 const { supremeCourtOTF } = require("./src/supremeCourtScrapper/index.js");
 const { scCauseListScrapper } = require("./src/scCauseListScrapper/index.js");
 const { cronForSCCauseList } = require("./src/services/CronServiceCauseList.js");
+const {fetchEastDelhiDistrictJudgments} = require("./src/districtEastDelhiCourtScrapper/index.js");
 
 module.exports = {
   // scrapeSupremeCourtCasesAPI,
@@ -19,6 +20,7 @@ module.exports = {
   fetchHighCourtJudgments,
   fetchDistrictCourtJudgments,
   fetchNCLTCourtJudgments,
+  fetchEastDelhiDistrictJudgments,
   supremeCourtOTF,
   scCauseListScrapper,
   cronForSCCauseList

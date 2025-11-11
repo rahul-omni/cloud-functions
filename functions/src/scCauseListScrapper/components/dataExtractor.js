@@ -62,21 +62,6 @@ const extractTableData = async (page) => {
         }
       });
       
-<<<<<<< HEAD
-      // Extract links to cause list files
-      const links = tr.querySelectorAll('a[href*=".pdf" i]');
-      console.log(`[debug] [page] Row ${index + 1} has ${links.length} PDF links`);
-      
-      obj.causeListLinks = Array.from(links, (a, linkIndex) => {
-        const linkData = { 
-          text: a.textContent.trim(), 
-          url: a.href,
-          filename: a.href.split('/').pop() || a.href
-        };
-        console.log(`[debug] [page] Link ${linkIndex + 1}: ${linkData.text} -> ${linkData.filename}`);
-        return linkData;
-      });
-=======
       // Extract links to cause list files from the File column
       const fileCell = tr.querySelector('td[data-th="File"]');
       let causeListLinks = [];
@@ -97,7 +82,6 @@ const extractTableData = async (page) => {
       }
       
       obj.causeListLinks = causeListLinks;
->>>>>>> 556fe3d769de4993646ca29c4889636bbd1734c8
       
       // Add row ID if available
       if (tr.id) {
@@ -109,21 +93,10 @@ const extractTableData = async (page) => {
       return obj;
     })
     .filter(row => {
-<<<<<<< HEAD
-      // Filter out rows that don't have essential case information
-      const hasSerialNumber = row["Serial Number"] && row["Serial Number"].trim();
-      // const hasCaseNumber = row["Case Number"] && row["Case Number"].trim();
-      // const hasPetitioner = row["Petitioner / Respondent"] && row["Petitioner / Respondent"].trim();
-      
-      // Only include rows that have at least serial number and case number
-      // This helps filter out header rows, section dividers, and IA rows
-      // return hasSerialNumber && hasCaseNumber && hasPetitioner;
-=======
       // Filter out rows that don't have Serial Number
       const hasSerialNumber = row["Serial Number"] && row["Serial Number"].trim();
       
       // Only include rows that have serial number
->>>>>>> 556fe3d769de4993646ca29c4889636bbd1734c8
       return hasSerialNumber;
     });
   });
