@@ -7,10 +7,10 @@ async function testCloudFunction() {
     const url = "https://asia-south1-booming-order-465208-t8.cloudfunctions.net/fetchEastDelhiDistrictJudgments";
     
     const payload = {
-        diaryNumber:  "6/2025",       //   "10/2022" "4/2025",
+        diaryNumber:  "212/2022",       //   "10/2022" "4/2025",
         courtName: "East District Court, Delhi",  // CHANGED THIS
         courtComplex: "Karkardooma Court Complex",
-        caseTypeValue: "MACT",
+        caseTypeValue: "CR Cases",
         court: "District Court"
     };
 

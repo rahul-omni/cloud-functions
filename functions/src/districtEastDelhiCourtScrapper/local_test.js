@@ -2,8 +2,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
  // Set the API key directly first
-process.env.OPENAI_API_KEY =  "add-api-key-here";
-
+process.env.OPENAI_API_KEY =  "YOUR_OPENAI_API_KEY_HERE"; // Replace with your actual OpenAI API key
 const { EastDelhiDistrictCourtScrapper } = require('./districtCourtScrapper');
 
 async function testLocalScraping() {
@@ -18,8 +17,8 @@ async function testLocalScraping() {
         console.log('✅ OpenAI API Key found');
         
         const testPayload = {
-            caseNumber: "20",              // Case number from form
-            caseYear: "2023",            // Year from form
+            caseNumber: "212",              // Case number from form
+            caseYear: "2022",            // Year from form
             caseType: "CR Cases",           // Case type dropdown value
             courtComplex: "Karkardooma Court Complex", // Court complex dropdown value
             courtName: "East District Court, Delhi"

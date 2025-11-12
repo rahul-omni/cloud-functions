@@ -129,7 +129,9 @@ function determineSearchType(date, diaryNumber, caseTypeValue, courtComplex) {
                     caseNumber: parsedCase.caseNumber,
                     caseYear: parsedCase.caseYear,
                     caseType: caseTypeValue,
-                    courtComplex: courtComplex
+                    courtComplex: courtComplex,
+                    diaryNumber: diaryNumber, // Keep original diary number for database
+                    diaryNumberFormatted: `${parsedCase.caseNumber}/${parsedCase.caseYear}` // Formatted as 212/2022
                 }
             };
         }
@@ -205,37 +207,61 @@ function formatDateForForm(dateString) {
     return `${month}/${day}/${year}`;
 }
 
-// Extract case type from case_details (e.g., "BA" from "BA/1234/2022")
+// Extract case type from case_details (e.g., "BA" from "BA/1234/2022" or "CR Cases" from "CR Cases/212/2022")
 function extractCaseType(caseDetails) {
     if (!caseDetails || typeof caseDetails !== 'string') {
         return '';
     }
     
-    // Pattern: "TYPE/NUMBER/YEAR" (e.g., "BA/1234/2022")
-    const match = caseDetails.match(/^([A-Z]+)\/(\d+)\/(\d{4})$/);
-    return match ? match[1] : '';
+    // Pattern 1: "TYPE/NUMBER/YEAR" (e.g., "BA/1234/2022")
+    const pattern1 = caseDetails.match(/^([A-Z]+)\/(\d+)\/(\d{4})$/);
+    if (pattern1) {
+        return pattern1[1];
+    }
+    
+    // Pattern 2: "TYPE WITH SPACES/NUMBER/YEAR" (e.g., "CR Cases/212/2022")
+    const pattern2 = caseDetails.match(/^([A-Z\s]+)\/(\d+)\/(\d{4})$/);
+    if (pattern2) {
+        return pattern2[1].trim();
+    }
+    
+    return '';
 }
 
-// Extract diary number from case_details (e.g., "1234/2022" from "BA/1234/2022")
+// Extract diary number from case_details (e.g., "1234/2022" from "BA/1234/2022" or "CR Cases/212/2022")
 function extractDiaryNumber(caseDetails) {
     if (!caseDetails || typeof caseDetails !== 'string') {
         return '';
     }
     
-    // Pattern: "TYPE/NUMBER/YEAR" (e.g., "BA/1234/2022")
-    const match = caseDetails.match(/^([A-Z]+)\/(\d+)\/(\d{4})$/);
-    return match ? `${match[2]}/${match[3]}` : '';
+    // Pattern 1: "TYPE/NUMBER/YEAR" (e.g., "BA/1234/2022")
+    const pattern1 = caseDetails.match(/^([A-Z]+)\/(\d+)\/(\d{4})$/);
+    if (pattern1) {
+        return `${pattern1[2]}/${pattern1[3]}`;
+    }
+    
+    // Pattern 2: "TYPE WITH SPACES/NUMBER/YEAR" (e.g., "CR Cases/212/2022")
+    const pattern2 = caseDetails.match(/^([A-Z\s]+)\/(\d+)\/(\d{4})$/);
+    if (pattern2) {
+        return `${pattern2[2]}/${pattern2[3]}`;
+    }
+    
+    return '';
 }
 
 // Transform scraped data to database schema format
 function transformToDatabaseSchema(caseItem, court, searchData) {
     const currentTimestamp = new Date().toISOString();
     const caseType = extractCaseType(caseItem.case_type_number_year || caseItem.case_number);
-    const diaryNumber = extractDiaryNumber(caseItem.case_type_number_year || caseItem.filing_number);
+    
+    // Prioritize diary number from searchData (payload), then try extracting from case number
+    let diaryNumber = searchData.diaryNumberFormatted || extractDiaryNumber(caseItem.case_type_number_year || caseItem.filing_number);
     
     console.log('[transform] Input caseItem keys:', Object.keys(caseItem));
     console.log('[transform] case_type_number_year:', caseItem.case_type_number_year);
     console.log('[transform] searchData:', searchData);
+    console.log('[transform] diaryNumber from payload:', searchData.diaryNumberFormatted);
+    console.log('[transform] diaryNumber final:', diaryNumber);
     console.log('[transform] Input all_parties count:', caseItem.all_parties?.length);
     
     // Build judgment_url array with order details as JSON objects
@@ -302,7 +328,7 @@ function transformToDatabaseSchema(caseItem, court, searchData) {
     
     const transformedData = {
         serial_number: caseItem.serial_number || '',
-        diary_number: diaryNumber || caseItem.filing_number || '',
+        diary_number: diaryNumber  || '',
         case_number: formattedCaseNumber,  // This will be "MACT/10/2022"
         parties: parties,
         advocates: '', // Not extracted in current implementation
@@ -324,6 +350,7 @@ function transformToDatabaseSchema(caseItem, court, searchData) {
         courtType: court.court_name || caseItem.courtComplex || '',
         
         // Additional metadata
+        filing_number:  caseItem.filing_number || '',
         filing_date: caseItem.filing_date || '',
         registered_on: caseItem.registered_on || '',
         first_hearing_date: caseItem.first_hearing_date || '',
