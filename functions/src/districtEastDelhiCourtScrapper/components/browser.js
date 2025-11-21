@@ -2,6 +2,65 @@ const puppeteer = require('puppeteer-core');
 const chromium = require('chrome-aws-lambda');
 const { wait, formatDateForForm } = require('./utils');
 
+// District Court URL mapping - maps court identifiers to their base URLs
+const DISTRICT_COURT_URLS = {
+     
+    'east district court, delhi': 'https://eastdelhi.dcourts.gov.in',
+    'new delhi district court, delhi': 'https://newdelhi.dcourts.gov.in',
+    'central district court, delhi': 'https://centraldelhi.dcourts.gov.in',
+    "North East District Court, Delhi": 'https://northeast.dcourts.gov.in/',
+   "Shahdara District Court, Delhi": 'https://shahdara.dcourts.gov.in/',
+    "South East District Court, Delhi": 'https://southeastdelhi.dcourts.gov.in/',
+    "South District Court, Delhi": 'https://southdelhi.dcourts.gov.in/',
+    "District Court North Delhi": 'https://northdelhi.dcourts.gov.in/',
+    "District Court North West Delhi":  'https://rohini.dcourts.gov.in/',
+    "West District Court, Delhi": 'https://westdelhi.dcourts.gov.in/',
+
+    "Dwarka Court South West Delhi": 'https://southwestdelhi.dcourts.gov.in/',
+ 
+  
+     
+};
+
+// Get the base URL for a given court name
+function getCourtBaseUrl(courtName) {
+    if (!courtName) {
+        throw new Error('Court name is required to determine URL');
+    }
+    
+    // Normalize court name: lowercase and trim
+    const normalizedName = courtName.toLowerCase().trim();
+    
+    console.log(`[court-url] Looking for: "${courtName}"`);
+    console.log(`[court-url] Normalized to: "${normalizedName}"`);
+    
+    // Try to find exact match (normalize keys to lowercase for comparison)
+    for (const [key, url] of Object.entries(DISTRICT_COURT_URLS)) {
+        if (key.toLowerCase() === normalizedName) {
+            console.log(`[court-url] ✅ Exact match found with key "${key}": ${url}`);
+            return url;
+        }
+    }
+    
+    // Try to find partial match by checking if any key is contained in the court name
+    for (const [key, url] of Object.entries(DISTRICT_COURT_URLS)) {
+        const normalizedKey = key.toLowerCase();
+        if (normalizedName.includes(normalizedKey) || normalizedKey.includes(normalizedName)) {
+            console.log(`[court-url] ✅ Partial match with key "${key}": ${url}`);
+            return url;
+        }
+    }
+    
+    // If no match found, throw an error with available courts
+    const availableCourts = [...new Set(Object.values(DISTRICT_COURT_URLS))];
+    console.log(`[court-url] ❌ No match found for "${courtName}"`);
+    console.log(`[court-url] Available keys:`, Object.keys(DISTRICT_COURT_URLS));
+    throw new Error(
+        `Court "${courtName}" not found in URL mapping. ` +
+        `Available courts: ${availableCourts.join(', ')}`
+    );
+}
+
 // Initialize browser with proper configuration
 async function initializeBrowser() {
     try {
@@ -91,13 +150,18 @@ async function navigateToOrderDatePage(page) {
 }
 
 // Navigate to  East Delhi Court website - Case Number search  
- // Navigate to East Delhi Court website - Case Number search  
-async function navigateToCaseNumberPage(page) {
+ // Navigate to District Court website - Case Number search (Dynamic URL based on court name)
+async function navigateToCaseNumberPage(page, courtName = 'East District Court, Delhi') {
     try {
-        console.log('[start] [navigateToCaseNumberPage] Opening East District Court, Delhi website (Case Number search)...');
+        // Get the base URL for the court
+        const baseUrl = getCourtBaseUrl(courtName);
+        const targetUrl = `${baseUrl}/case-status-search-by-case-number/`;
+        
+        console.log(`[start] [navigateToCaseNumberPage] Opening ${courtName} website (Case Number search)...`);
+        console.log(`[info] [navigateToCaseNumberPage] Target URL: ${targetUrl}`);
         
         // Go directly to the case number search page
-        await page.goto('https://eastdelhi.dcourts.gov.in/case-status-search-by-case-number/', {
+        await page.goto(targetUrl, {
             waitUntil: 'networkidle2',
             timeout: 60000
         });
@@ -110,7 +174,7 @@ async function navigateToCaseNumberPage(page) {
         console.log('[info] Form elements found, page loaded successfully');
         await wait(3000);
         
-        console.log('[end] [navigateToCaseNumberPage] Navigated to Case Number page');
+        console.log(`[end] [navigateToCaseNumberPage] Navigated to ${courtName} Case Number page`);
     } catch (error) {
         console.error('[error] [navigateToCaseNumberPage] Failed to navigate to case number page:', error.message);
         

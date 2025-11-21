@@ -50,9 +50,9 @@ const EastDelhiDistrictCourtScrapper = async (date, diaryNumber, courtName, case
     // Connect to database
     dbClient = await handleDatabaseConnection();
 
-    // Validate court support
-    if (!courtName || !courtName.toLowerCase().includes('East District Court, Delhi'.toLowerCase())) {
-      throw new Error(`District court not yet supported. Currently only'East District Court, Delhi'is supported. Requested: ${courtName}`);
+    // Validate court name is provided
+    if (!courtName) {
+      throw new Error(`Court name is required. Please provide a valid Delhi District Court name.`);
     }
 
     console.log(`[info] [EastDelhiDistrictCourtScrapper] Using ${courtName} District Court scraper`);
@@ -71,7 +71,8 @@ const EastDelhiDistrictCourtScrapper = async (date, diaryNumber, courtName, case
           date, 
           diaryNumber, 
           caseTypeValue, 
-          courtComplex, 
+          courtComplex,
+          courtName, 
           responseInterceptor, 
           dbClient
         );
@@ -79,7 +80,7 @@ const EastDelhiDistrictCourtScrapper = async (date, diaryNumber, courtName, case
         // Transform raw data into final format
         const transformedData = {
             success: true,
-            court_name: 'East District Court, Delhi',
+            court_name: courtName,
             search_parameters: {
                 search_type: results.search_parameters?.search_type || 'case_number',
                 search_data: results.search_parameters?.search_data || {
@@ -89,7 +90,7 @@ const EastDelhiDistrictCourtScrapper = async (date, diaryNumber, courtName, case
                     courtComplex: courtComplex
                 },
                 search_timestamp: new Date().toISOString(),
-                court_name: 'East District Court, Delhi'
+                court_name: courtName
             },
             total_courts: results.cases?.length || 0,
             total_cases: results.cases?.reduce((acc, court) => acc + (court.cases?.length || 0), 0) || 0,

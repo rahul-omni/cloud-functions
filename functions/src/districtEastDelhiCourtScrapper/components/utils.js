@@ -118,7 +118,7 @@ function parseCaseNumber(diaryNumber) {
 }
 
 // Determine search type based on parameters
-function determineSearchType(date, diaryNumber, caseTypeValue, courtComplex) {
+function determineSearchType(date, diaryNumber, caseTypeValue, courtComplex, courtName = '') {
     // If we have a diary number or case type value, prefer case number search
     if (diaryNumber && caseTypeValue && courtComplex) {
         const parsedCase = parseCaseNumber(diaryNumber);
@@ -130,6 +130,7 @@ function determineSearchType(date, diaryNumber, caseTypeValue, courtComplex) {
                     caseYear: parsedCase.caseYear,
                     caseType: caseTypeValue,
                     courtComplex: courtComplex,
+                    courtName: courtName, // Add courtName from payload
                     diaryNumber: diaryNumber, // Keep original diary number for database
                     diaryNumberFormatted: `${parsedCase.caseNumber}/${parsedCase.caseYear}` // Formatted as 212/2022
                 }
@@ -143,7 +144,8 @@ function determineSearchType(date, diaryNumber, caseTypeValue, courtComplex) {
         searchType: 'order_date',
         searchData: {
             date: date || getYesterday(),
-            courtComplex: courtComplex
+            courtComplex: courtComplex,
+            courtName: courtName // Add courtName from payload
         }
     };
 }
@@ -263,6 +265,7 @@ function transformToDatabaseSchema(caseItem, court, searchData) {
     console.log('[transform] diaryNumber from payload:', searchData.diaryNumberFormatted);
     console.log('[transform] diaryNumber final:', diaryNumber);
     console.log('[transform] Input all_parties count:', caseItem.all_parties?.length);
+    console.log('[transform] courtName from payload:', searchData.courtName);
     
     // Build judgment_url array with order details as JSON objects
     const judgmentUrls = [];
@@ -344,7 +347,7 @@ function transformToDatabaseSchema(caseItem, court, searchData) {
         judgment_text: [],
         case_type: caseItem.case_type || caseType,
         city: caseItem.city || 'Delhi',
-        district: caseItem.district || "East District Court, Delhi",
+        district: searchData.courtName || caseItem.district || '',  // Prioritize courtName from payload, then extracted district
         judgment_type: caseItem.judgment_type || '',
         courtComplex: searchData.courtComplex || caseItem.court_complex || '',  // From test payload: "Karkardooma Court Complex"
         courtType: court.court_name || caseItem.courtComplex || '',
@@ -376,6 +379,7 @@ function transformToDatabaseSchema(caseItem, court, searchData) {
     };
     
     console.log('[transform] Output parties:', transformedData.parties);
+    console.log('[transform] Output district:', transformedData.district);
     console.log('[transform] Output judgment_url count:', transformedData.judgment_url.length);
     console.log('[transform] Output case_status:', transformedData.case_status);
     

@@ -201,17 +201,17 @@ async function extractCaseDetailPage(page) {
 
  
 
-async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, responseInterceptor, dbClient = null) {
-    console.log(`[start] [scrapeData] Starting data scraping`);
+async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, courtName, responseInterceptor, dbClient = null) {
+    console.log(`[start] [scrapeData] Starting data scraping for ${courtName}`);
     
     try {
         // Determine search type and prepare search data
-        const searchInfo = determineSearchType(date, diaryNumber, caseTypeValue, courtComplex);
+        const searchInfo = determineSearchType(date, diaryNumber, caseTypeValue, courtComplex, courtName);
         console.log(`[info] Search type: ${searchInfo.searchType}`, searchInfo.searchData);
 
         // Navigate and fill form based on search type
         if (searchInfo.searchType === 'case_number') {
-            await navigateToCaseNumberPage(page);
+            await navigateToCaseNumberPage(page, courtName);
             await selectCourtComplex(page, searchInfo.searchData.courtComplex);
             await setCaseNumberFields(
                 page, 

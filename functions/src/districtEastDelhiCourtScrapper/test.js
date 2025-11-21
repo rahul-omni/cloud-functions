@@ -6,11 +6,19 @@ const fetch = require('node-fetch');
 async function testCloudFunction() {
     const url = "https://asia-south1-booming-order-465208-t8.cloudfunctions.net/fetchEastDelhiDistrictJudgments";
     
-    const payload = {
+    const payload1 = {
         diaryNumber:  "212/2022",       //   "10/2022" "4/2025",
         courtName: "East District Court, Delhi",  // CHANGED THIS
         courtComplex: "Karkardooma Court Complex",
         caseTypeValue: "CR Cases",
+        court: "District Court"
+    };
+   //TM / 931 / 2016 Cr. Case / 43 / 2025  RC ARC / 72 / 2024
+     const payload = {
+        diaryNumber:  "122/2025",      
+        courtName:  "Central District Court, Delhi",
+        courtComplex: "Tis Hazari Court Complex",
+        caseTypeValue: "RC ARC",
         court: "District Court"
     };
 
