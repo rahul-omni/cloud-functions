@@ -1,0 +1,144 @@
+
+{
+  "bench": [
+    {
+      "name": "Principal Bench",
+      "courts": [
+        {"name": "Principal Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "New Delhi Bench Court-II",
+      "courts": [
+        {"name": "New Delhi Bench Court-II", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "New Delhi Bench Court-III",
+      "courts": [
+        {"name": "New Delhi Bench Court-III", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "New Delhi Bench Court-IV",
+      "courts": [
+        {"name": "New Delhi Bench Court-IV", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "New Delhi Bench Court-V",
+      "courts": [
+        {"name": "New Delhi Bench Court-V", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "New Delhi Bench Court-VI",
+      "courts": [
+        {"name": "New Delhi Bench Court-VI", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Ahmedabad",
+      "courts": [
+        {"name": "Ahmedabad Bench Court-I", "causeListDate": "2025-09-26"},
+        {"name": "Ahmedabad Bench Court-II", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Allahabad",
+      "courts": [
+        {"name": "Allahabad Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Amravati",
+      "courts": [
+        {"name": "Amaravati Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Bengaluru",
+      "courts": [
+        {"name": "Bengaluru Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Chandigarh",
+      "courts": [
+        {"name": "Chandigarh Bench Court-I", "causeListDate": "2025-09-26"},
+        {"name": "Chandigarh Bench Court-II", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Chennai",
+      "courts": [
+        {"name": "Chennai Bench Court-I", "causeListDate": "2025-09-26"},
+        {"name": "Chennai Bench Court-II", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Cuttak",
+      "courts": [
+        {"name": "Cuttack Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Guwahati",
+      "courts": [
+        {"name": "Guwahati Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Hyderabad",
+      "courts": [
+        {"name": "Hyderabad Bench Court-I", "causeListDate": "2025-09-26"},
+        {"name": "Hyderabad Bench Court-II", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Indore",
+      "courts": [
+        {"name": "Indore Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Jaipur",
+      "courts": [
+        {"name": "Jaipur Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Kochi",
+      "courts": [
+        {"name": "Kochi Bench Court-I", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Kolkata",
+      "courts": [
+        {"name": "Kolkata Bench Court-I", "causeListDate": "2025-09-26"},
+        {"name": "Kolkata Bench Court-II", "causeListDate": "2025-09-26"},
+        {"name": "Kolkata Bench Court-3", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Mumbai",
+      "courts": [
+        {"name": "Mumbai Bench Court-II", "causeListDate": "2025-09-26"},
+        {"name": "Mumbai Bench Court-III", "causeListDate": "2025-09-26"},
+        {"name": "Mumbai Bench Court-IV", "causeListDate": "2025-09-26"},
+        {"name": "Mumbai Bench Court-V", "causeListDate": "2025-09-26"},
+        {"name": "Mumbai Bench Court-VI", "causeListDate": "2025-09-26"}
+      ]
+    },
+    {
+      "name": "Registrar NCLT Court-I",
+      "courts": [
+        {"name": "Registrar NCLT Court-I", "causeListDate": "2025-09-26"}
+      ]
+    }
+  ],
+  "extractPdfs": true,
+  "consolidatedOutput": true,
+  "description": "NCLT Benches mapped to NCLT_BENCH constants (New Delhi flattened)"
+}

@@ -1,0 +1,48 @@
+
+
+{
+  "bench": [
+    {"name": "Principal Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Ahmedabad Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Ahmedabad Bench Court-II", "causeListDate": "2025-09-19"},
+    
+    {"name": "Allahabad Bench Court-I", "causeListDate": "2025-09-19"},
+    
+    {"name": "Amaravati Bench Court-I", "causeListDate": "2025-09-19"},
+   
+    {"name": "Bengaluru Bench Court-I", "causeListDate": "2025-09-19"},
+    
+    {"name": "Chandigarh Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Chandigarh Bench Court-II", "causeListDate": "2025-09-19"},
+   
+    {"name": "Chennai Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Chennai Bench Court-II", "causeListDate": "2025-09-19"},
+    
+    {"name": "Cuttack Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Guwahati Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Hyderabad Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Hyderabad Bench Court-II", "causeListDate": "2025-09-19"},
+    {"name": "Indore Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Jaipur Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Kochi Bench Court-I", "causeListDate": "2025-09-19"},
+    {"name": "Kolkata Bench Court-II", "causeListDate": "2025-09-19"},
+    {"name": "Kolkata Bench Court-3", "causeListDate": "2025-09-19"},
+    {"name": "Kolkata Bench Court-I", "causeListDate": "2025-09-19"},
+   
+   
+    {"name": "Mumbai Bench Court-II", "causeListDate": "2025-09-19"},
+    {"name": "Mumbai Bench Court-III", "causeListDate": "2025-09-19"},
+    {"name": "Mumbai Bench Court-IV", "causeListDate": "2025-09-19"},
+    {"name": "Mumbai Bench Court-V", "causeListDate": "2025-09-19"},
+    {"name": "Mumbai Bench Court-VI", "causeListDate": "2025-09-19"},
+    {"name": "New Delhi Bench Court-II", "causeListDate": "2025-09-19"},
+    {"name": "New Delhi Bench Court-III", "causeListDate": "2025-09-19"},
+    {"name": "New Delhi Bench Court-IV", "causeListDate": "2025-09-19"},
+    {"name": "New Delhi Bench Court-V", "causeListDate": "2025-09-19"},
+    {"name": "New Delhi Bench Court-VI", "causeListDate": "2025-09-19"},
+    {"name": "Registrar NCLT Court-I", "causeListDate": "2025-09-19"}
+  ],
+  "extractPdfs": true,
+  "consolidatedOutput": true,
+  "description": "NCLT Benches from both images - Exact representation"
+}
