@@ -14,12 +14,21 @@ exports.fetchEastDelhiDistrictJudgments = regionFunctions.runWith(runtimeOpts).h
     try {
 
       console.log("[start] [fetchEastDelhiDistrictJudgments] req.body", req.body);
-      
+      const caseId = req.body?.id; // ⭐ Get the case ID from payload
       const date = req.body?.date || new Date().toISOString().split('T')[0];
       const diaryNumber = req.body?.diaryNumber;
       const courtName = req.body?.courtName || req.body?.districtCourt;
       const caseTypeValue = req.body?.caseTypeValue;
-      const courtComplex = req.body?.courtComplex
+      const courtComplex = req.body?.courtComplex;
+      
+      console.log(`[params] Extracted parameters:`, { 
+        caseId, 
+        date, 
+        diaryNumber, 
+        courtName, 
+        caseTypeValue, 
+        courtComplex 
+      });
 
       if (!courtName && !diaryNumber && !caseTypeValue && !courtComplex) {
         throw new Error('District Court name is required (courtName or districtCourt field)');
@@ -27,7 +36,7 @@ exports.fetchEastDelhiDistrictJudgments = regionFunctions.runWith(runtimeOpts).h
         throw new Error('Date is required');
       }
 
-      result = await EastDelhiDistrictCourtScrapper(date, diaryNumber, courtName, caseTypeValue, courtComplex);
+      result = await EastDelhiDistrictCourtScrapper(date, diaryNumber, courtName, caseTypeValue, courtComplex ,caseId);
 
     } catch (error) {
       console.error('❌  Error:', error.message);

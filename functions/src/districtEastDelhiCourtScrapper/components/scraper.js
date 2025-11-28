@@ -1071,9 +1071,20 @@ async function handleCaptcha(page, captchaRetries = 20) {
             
         } catch (error) {
             console.log(`[captcha] Attempt ${attempt} failed:`, error.message);
+            
+            // If we get a 429 rate limit error, add exponential backoff
+            if (error.message && error.message.includes('429')) {
+                const backoffDelay = Math.min(10000, 2000 * Math.pow(2, attempt - 1)); // Max 10 seconds
+                console.log(`[captcha] 429 Rate limit detected - waiting ${backoffDelay}ms before retry...`);
+                await wait(backoffDelay);
+            }
+            
             if (attempt === captchaRetries) {
                 throw error;
             }
+            
+            // Add a small delay between attempts to avoid overwhelming the API
+            await wait(1000);
         }
     }
 

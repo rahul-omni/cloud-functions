@@ -400,17 +400,46 @@ async function setCaseNumberFields(page, caseNumber, caseYear, caseType = null) 
     try {
         console.log(`[start] [setCaseNumberFields] Filling case details: ${caseNumber}/${caseYear}, Type: ${caseType}`);
         
-        // Fill case number
+        // Fill case number (try typing, fallback to direct set if typing doesn't stick)
         console.log(`[info] [setCaseNumberFields] Filling case number: ${caseNumber}`);
         await page.waitForSelector('#reg_no', { timeout: 5000 });
-        await page.type('#reg_no', caseNumber);
-        await wait(1000);
+        try {
+            await page.click('#reg_no', { clickCount: 3 });
+            await page.type('#reg_no', String(caseNumber || ''), { delay: 20 });
+            await wait(300);
+        } catch (e) {
+            console.warn('[warning] [setCaseNumberFields] Typing reg_no failed, falling back to direct set', e.message);
+        }
 
-        // Fill case year
+        // Ensure value is set - fallback by assigning via DOM and dispatching input event
+        await page.evaluate((val) => {
+            const el = document.querySelector('#reg_no');
+            if (el) {
+                el.value = val || '';
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }, caseNumber);
+        await wait(200);
+
+        // Fill case year (try typing, fallback to direct set if typing doesn't stick)
         console.log(`[info] [setCaseNumberFields] Filling case year: ${caseYear}`);
         await page.waitForSelector('#reg_year', { timeout: 5000 });
-        await page.type('#reg_year', caseYear);
-        await wait(1000);
+        try {
+            await page.click('#reg_year', { clickCount: 3 });
+            await page.type('#reg_year', String(caseYear || ''), { delay: 20 });
+            await wait(300);
+        } catch (e) {
+            console.warn('[warning] [setCaseNumberFields] Typing reg_year failed, falling back to direct set', e.message);
+        }
+
+        await page.evaluate((val) => {
+            const el = document.querySelector('#reg_year');
+            if (el) {
+                el.value = val || '';
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }, caseYear);
+        await wait(200);
 
         // Select case type if provided
         if (caseType) {
@@ -467,7 +496,27 @@ async function setCaseNumberFields(page, caseNumber, caseYear, caseType = null) 
         console.log(`[info] [setCaseNumberFields] Field verification:`, fieldValues);
         
         if (!fieldValues.regNo || !fieldValues.regYear) {
-            throw new Error(`Required fields not set. Case: "${fieldValues.regNo}", Year: "${fieldValues.regYear}"`);
+            // Try one more time to set values from parameters before giving up
+            console.log('[warning] [setCaseNumberFields] Fields empty after initial set, attempting force-set from parameters');
+            await page.evaluate((num, yr) => {
+                const r = document.querySelector('#reg_no');
+                const y = document.querySelector('#reg_year');
+                if (r) { r.value = num || ''; r.dispatchEvent(new Event('input', { bubbles: true })); }
+                if (y) { y.value = yr || ''; y.dispatchEvent(new Event('input', { bubbles: true })); }
+            }, caseNumber, caseYear);
+            await wait(300);
+            const recheck = await page.evaluate(() => ({
+                regNo: document.querySelector('#reg_no')?.value || '',
+                regYear: document.querySelector('#reg_year')?.value || ''
+            }));
+            console.log('[info] [setCaseNumberFields] Re-check after force-set:', recheck);
+
+            if (!recheck.regNo || !recheck.regYear) {
+                // Capture a small HTML snippet for debugging and return useful error
+                const snippet = await page.evaluate(() => document.querySelector('body')?.innerHTML?.substring(0, 2000) || '');
+                console.error('[error] [setCaseNumberFields] Final values missing after fallbacks. HTML snippet:', snippet.substring(0,500));
+                throw new Error(`Required fields not set after fallbacks. Case: "${recheck.regNo}", Year: "${recheck.regYear}"`);
+            }
         }
 
         console.log(`[end] [setCaseNumberFields] All fields set correctly`);
