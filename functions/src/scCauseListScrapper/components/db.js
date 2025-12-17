@@ -127,26 +127,25 @@ const insertCauselist = async (results) => {
 const getSubscribedCases = async () => {
   const sql = `
       WITH rows_to_update AS (
-      SELECT uc.id
-      FROM user_cases uc
-      JOIN users u ON uc.user_id = u.id
-      WHERE (uc.last_synced IS NULL OR uc.last_synced::date <> CURRENT_DATE)
-        AND uc.court = 'Supreme Court'
-      LIMIT 100
-  )
-  UPDATE user_cases uc
-  SET last_synced = NOW()
-  FROM users u, rows_to_update r
-  WHERE uc.id = r.id
-    AND uc.user_id = u.id
-  RETURNING 
-    u.id AS user_id,
-    uc.case_number,
-    uc.id AS case_id, 
-    u.email,
-    uc.diary_number,
-    u.mobile_number,
-    uc.last_synced;`;
+          SELECT cd.id, u.id AS user_id
+          FROM subscribed_cases sc
+          JOIN users u ON sc.user_id = u.id
+          JOIN case_details cd ON sc.case_id = cd.id
+          WHERE (cd.last_synced IS NULL OR cd.last_synced::date <> CURRENT_DATE)
+            AND cd.court = 'Supreme Court'
+          LIMIT 100
+      )
+      UPDATE case_details cd
+      SET last_synced = NOW()
+      FROM rows_to_update r
+      WHERE cd.id = r.id
+      RETURNING
+          r.user_id,
+          cd.case_number,
+          cd.id AS case_id,
+          cd.diary_number,
+          (SELECT mobile_number FROM users WHERE id = r.user_id) AS mobile_number,
+          cd.last_synced;`;
 
   const { rows } = await db.query(sql);
   return rows;
@@ -158,7 +157,7 @@ const updateUserCase = async (id, dateString) => {
   const formattedDate = `${year}-${month}-${day}`;
 
   const sql = `
-    UPDATE user_cases
+    UPDATE case_details
     SET tentative_date = $1
     WHERE id = $2
     RETURNING *;

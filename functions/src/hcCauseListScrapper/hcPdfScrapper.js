@@ -16,11 +16,11 @@ const {
 } = require('./components');
 const { setupDialogHandler } = require('../highCourtScrapper/components/browser');
 
-const openAiKey = functions.config().environment.openai_api_key;;
+const openAiKey = functions.config().environment.openai_api_key;
 const KEY = openAiKey;
 
-const wait = ms => new Promise(r => setTimeout(r, ms));
 
+const wait = ms => new Promise(r => setTimeout(r, ms));
 async function solveCaptcha(buf) {
     const dataURL = 'data:image/png;base64,' + buf.toString('base64');
     

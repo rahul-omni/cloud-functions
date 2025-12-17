@@ -125,18 +125,22 @@ const insertCauselist = async (results) => {
 }
 
 const getSubscribedCases = async () => {
-  const sql = `UPDATE user_cases
-    SET tentative_date_sync = CURRENT_DATE
-    WHERE id IN (
-      SELECT id
-      FROM user_cases
-      WHERE court = 'Supreme Court'
-        AND (tentative_date_sync IS NULL OR tentative_date_sync < NOW() - INTERVAL '1 day')
-        AND tentative_date < CURRENT_DATE
-      ORDER BY id
-      LIMIT 10
-    )
-    RETURNING id, case_type, case_number, diary_number, tentative_date;`;
+  const sql = `UPDATE case_details cd
+    SET tentative_date_sync = NOW()
+    FROM (
+        SELECT cd.id
+        FROM case_details cd
+        INNER JOIN subscribed_cases sc ON cd.id = sc.case_id
+        WHERE cd.court = 'Supreme Court'
+          AND (cd.tentative_date_sync IS NULL 
+              OR cd.tentative_date_sync < NOW() - INTERVAL '1 day')
+          AND (cd.tentative_date < CURRENT_DATE
+          OR cd.tentative_date is NULL)
+        ORDER BY cd.id
+        LIMIT 10
+    ) AS sub
+    WHERE cd.id = sub.id
+    RETURNING cd.id, cd.case_type, cd.case_number, cd.diary_number, cd.tentative_date;`;
 
   const { rows } = await db.query(sql);
   return rows;
@@ -148,7 +152,7 @@ const updateUserCase = async (id, dateString) => {
   const formattedDate = `${year}-${month}-${day}`;
 
   const sql = `
-    UPDATE user_cases
+    UPDATE case_details
     SET tentative_date = $1
     WHERE id = $2
     RETURNING *;

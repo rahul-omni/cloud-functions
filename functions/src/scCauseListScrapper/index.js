@@ -123,6 +123,8 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
       for (const row of subscribedCases) {
         const { case_number, diary_number, mobile_number, user_id, case_id } = row;
 
+        console.log(case_number, diary_number, mobile_number, user_id, case_id, "details");
+
         // Normalize the case number (remove leading zeros, unify separators)
         const normalizedCase = normalizeCaseNumber(case_number);
 
