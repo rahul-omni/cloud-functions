@@ -84,7 +84,7 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     }
 
     //Insert orders into database
-    await insertOrder(dbClient, transformedResults);
+    // await insertOrder(dbClient, transformedResults);
     
     res.status(200).json({
       success: true,
