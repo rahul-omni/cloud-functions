@@ -29,5 +29,5 @@ module.exports = {
   tentativeDateSC,
   highCourtCasesUpsert,
   districtEastDelhiCourtScrapper,
-  supremeCourtCasesUpsert
+  supremeCourtCasesUpsert,
 };

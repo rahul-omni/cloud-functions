@@ -92,7 +92,18 @@ async function uploadPDFToGCS(cookies, url, filename) {
                 const gcsPath = `gs://${bucketName}/${gcsFilename}`;
                 console.log(`✅  GCS upload completed: ${gcsPath}`);
                 
+                // Wait a bit to ensure file is fully available in GCS
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
                 try {
+                    // Verify file exists before generating signed URL
+                    const [exists] = await file.exists();
+                    if (!exists) {
+                        throw new Error(`File ${gcsFilename} does not exist in bucket ${bucketName}`);
+                    }
+                    
+                    console.log(`🔍  File exists, generating signed URL...`);
+                    
                     // Generate signed URL for immediate access
                     const [signedUrl] = await file.getSignedUrl({
                         version: 'v4',
@@ -102,11 +113,13 @@ async function uploadPDFToGCS(cookies, url, filename) {
                     
                     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
                     
-                    console.log(`🔗  Signed URL generated, expires: ${expiresAt.toISOString()}`);
+                    console.log(`🔗  Signed URL generated successfully`);
+                    console.log(`   URL: ${signedUrl.substring(0, 100)}...`);
+                    console.log(`   Expires: ${expiresAt.toISOString()}`);
                     
                     resolve({
                         gcsPath: gcsPath,
-                        // signedUrl: signedUrl,
+                        signedUrl: signedUrl,
                         signedUrlExpiresAt: expiresAt,
                         filename: gcsFilename,
                         bucketName: bucketName
@@ -114,6 +127,7 @@ async function uploadPDFToGCS(cookies, url, filename) {
                     
                 } catch (signedUrlError) {
                     console.error(`⚠️  Failed to generate signed URL: ${signedUrlError.message}`);
+                    console.error(`   Error details:`, signedUrlError);
                     // Still resolve with GCS path even if signed URL fails
                     resolve({
                         gcsPath: gcsPath,

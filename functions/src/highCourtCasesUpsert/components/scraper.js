@@ -2,6 +2,7 @@ const { wait, filterValidRows, processRows, transformRowData } = require('./util
 const { solveCaptcha } = require('./captcha');
 const { uploadPDFToGCS } = require('./uploadpdf');
 const { bulkInsertOrders, insertOrder, updateJudgmentUrl } = require('./database');
+const { sendNotifications } = require('./notification');
 
 // Handle captcha solving with retries
 async function handleCaptcha(page, captchaRetries = 3) {
@@ -275,7 +276,7 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                 }  
             } else {
                 // Entry exists - check if PDF needs to be uploaded                
-                if (row.Order && row.Order.href && date == null) {  
+                if (row.Order && row.Order.href) {  
                     try {
                         const diarySanitized = String(row.DiaryNumber).replace(/[^\w]+/g, '_');
                         const caseTypeSanitized = String(row.case_type || '').replace(/[^\w]+/g, '_');
@@ -286,7 +287,7 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                         
                         const uploadResult = await uploadPDFToGCS(cookies, row.Order.href, gcsFilename);
 
-                        console.log("uploadResult", uploadResult);
+                        console.log("uploadResultPDFUpload", uploadResult);
 
                         let updatedOrder = existingEntry.judgment_url || { orders: [] };
 
@@ -294,7 +295,7 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
 
                         for (const order of updatedOrder.orders) {
                             if (order.judgmentDate == row.JudgetmentDate) {
-                                console.log(`ℹ️  PDF for judgment date ${row.JudgetmentDate} already exists in database. Skipping update.`);
+                                console.log(`ℹ️  PDF for judgment date ${date} already exists in database. Skipping update.`);
                                 existsInOrders = true;
                                 break;
                             }
@@ -304,6 +305,7 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                         }
                         const order = {
                             gcsPath: uploadResult.gcsPath,
+                            signedUrl: uploadResult.signedUrl,
                             filename: uploadResult.filename,
                             judgmentDate: row.JudgetmentDate || date,
                         }
@@ -313,6 +315,32 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                         updatedCount++;
                         await updateJudgmentUrl(dbClient, existingEntry.id, updatedOrder, sync_site);
                         
+                        // Send notifications after judgment URL is updated
+                        if(date !== null) {
+                            try {
+                                // Get judgment URL - prefer signedUrl, fallback to original href, then gcsPath
+                                const judgmentUrl = uploadResult.signedUrl || 'https://portal.vakeelassist.com/cases';
+                                
+                                if (!uploadResult.signedUrl) {
+                                    console.warn(`⚠️  [processPDFAndInsertToDB] Signed URL not available for ${row.DiaryNumber}, using fallback: ${judgmentUrl}`);
+                                }
+                                
+                                await sendNotifications(
+                                    dbClient,
+                                    row.DiaryNumber,
+                                    row.case_type,
+                                    "High Court",          // court name (matches case_details.court value)
+                                    row.city || null,      // city
+                                    null,                  // district (not available in scraped data)
+                                    row.JudgetmentDate || date,  // judgment date
+                                    judgmentUrl            // judgment URL
+                                );
+                                console.log(`✅ [processPDFAndInsertToDB] Notifications sent for diary ${row.DiaryNumber}`);
+                            } catch (notificationError) {
+                                console.error(`❌ [processPDFAndInsertToDB] Failed to send notifications for ${row.DiaryNumber}:`, notificationError.message);
+                                // Don't throw - continue processing other entries even if notification fails
+                            }
+                        }
                     } catch (uploadError) {
                         console.error(`❌ [processPDFAndInsertToDB] PDF upload failed for existing entry ${row.DiaryNumber}:`, uploadError.message);
                         console.log(`[processPDFAndInsertToDB] PDF upload failed. Continuing...`);
