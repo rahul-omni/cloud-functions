@@ -343,10 +343,41 @@ async function getCaseDetails(dbClient, id) {
   }
 }
 
+// Get user cases for High Court using subscribed_cases table
+async function getHighCourtUserCases(dbClient, diaryNumber, caseType, court, city, district) {
+  try {
+    const query = `SELECT 
+            sc.user_id,
+            cd.diary_number,
+            cd.court,
+            cd.case_type,
+            cd.city,
+            cd.district,
+            u.country_code,
+            u.mobile_number,
+            u.email
+          FROM case_details cd
+          JOIN subscribed_cases sc ON sc.case_id = cd.id
+          JOIN users u ON u.id = sc.user_id
+          WHERE cd.diary_number = $1 
+            AND cd.court = $2
+            AND ($3::text IS NULL OR cd.case_type = $3)
+            AND ($4::text IS NULL OR cd.city = $4)
+            AND ($5::text IS NULL OR cd.district = $5)`;
+    const values = [diaryNumber, court || 'High Court', caseType || null, city || null, district || null];
+    const result = await dbClient.query(query, values);
+    return result.rows;
+  } catch (error) {
+    console.error(`❌  Failed to get user cases for diary ${diaryNumber}:`, error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   connectToDatabase,
   insertOrder,
   bulkInsertOrders,
   updateJudgmentUrl,
-  getCaseDetails
+  getCaseDetails,
+  getHighCourtUserCases
 }; 
