@@ -1,7 +1,7 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
 const { fetchSupremeCourtOTF } = require('../supremeCourtScrapper/supremeCourtOTF');
-const { connectToDatabase, insertOrder } = require('./components/db');
+const { connectToDatabase, insertOrder, updateOrder, markSyncError } = require('./components/db');
 const { transformResults } = require('./components/utils');
 
 // Runtime options for the function
@@ -33,6 +33,8 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     const caseYear = body?.caseYear || "";
     const diaryNumber = body?.diaryNumber || "";
 
+    const id = body?.id || "";
+
     console.log("[info] [supremeCourtOTF] payload body at: diary_number", diaryNumber);
     console.log("[info] [supremeCourtOTF] payload body at: caseType", caseType);
     console.log("[info] [supremeCourtOTF] payload body at: caseNumber", caseNumber);
@@ -47,6 +49,8 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
 
     // Scrape the cases for supreme court and high court
     results = await fetchSupremeCourtOTF(caseType, caseNumber, caseYear, diaryNumber);
+
+    console.log(`[info] [supremeCourtOTF] Scraped ${results}`);
     
     // Transform results to create separate rows for each judgment
     let transformedResults = [];
@@ -62,9 +66,25 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     // Connect to database
     dbClient = await connectToDatabase();
 
+    if (id) {
+      await updateOrder(dbClient, transformedResults, id);
+      return res.status(200).json({
+        success: true,
+        message: "Cron job completed successfully",
+        data: transformedResults
+      });
+    }
+    if (transformedResults.length === 0) {
+      await markSyncError(dbClient, id);
+      return res.status(200).json({
+        success: true,
+        message: "No new cases to insert",
+        data: transformedResults
+      });
+    }
+
     //Insert orders into database
     await insertOrder(dbClient, transformedResults);
-
     
     res.status(200).json({
       success: true,

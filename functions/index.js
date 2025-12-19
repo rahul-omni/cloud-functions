@@ -13,6 +13,7 @@ const {tentativeDateSC} = require("./src/tentativeDateSC/index.js");
 const { highCourtCasesUpsert } = require("./src/highCourtCasesUpsert/index.js");
 const {districtEastDelhiCourtScrapper} = require("./src/districtEastDelhiCourtScrapper/index.js");
 const {supremeCourtCasesUpsert} = require("./src/supremeCourtCasesUpsert/index.js");
+const {delhiDistrictCourtCauseListScrapper} = require("./src/delhiDistrictCourtCauseListScrapper/index.js");
 
 module.exports = {
   // scrapeSupremeCourtCasesAPI,
@@ -30,4 +31,5 @@ module.exports = {
   highCourtCasesUpsert,
   districtEastDelhiCourtScrapper,
   supremeCourtCasesUpsert,
+  delhiDistrictCourtCauseListScrapper
 };

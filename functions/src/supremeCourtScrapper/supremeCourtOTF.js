@@ -85,7 +85,7 @@ const fetchSupremeCourtOTF = async (caseType, caseNumber, caseYear, diaryNumber)
       try {
         console.log(`[info] [fetchSupremeCourtOTF] Captcha attempt ${attempt}/3`);
         
-        const imgEl = await page.waitForSelector('.siwp_img, .captcha-img');
+        const imgEl = await page.waitForSelector('.siwp_captcha_image, .siwp_img, .captcha-img');
         const imgURL = await page.evaluate(el => el.src, imgEl);
         const { data } = await axios.get(imgURL, { responseType: 'arraybuffer' });
 
