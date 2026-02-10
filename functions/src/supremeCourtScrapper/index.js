@@ -19,9 +19,9 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
   console.log("[start] [supremeCourtOTF] scraper service started at:", new Date().toISOString());
 
   let dbClient = null;
+  let id = "";
 
   try {
-    
     let body = req.body;
     if (typeof req.body === 'string') {
         body = JSON.parse(req.body);
@@ -33,7 +33,7 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     const caseYear = body?.caseYear || "";
     const diaryNumber = body?.diaryNumber || "";
 
-    const id = body?.id || "";
+    id = body?.id || "";
 
     console.log("[info] [supremeCourtOTF] payload body at: diary_number", diaryNumber);
     console.log("[info] [supremeCourtOTF] payload body at: caseType", caseType);
@@ -67,6 +67,15 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     dbClient = await connectToDatabase();
 
     if (id) {
+      // When no results found, mark case as sync error (same as highCourtCasesUpsert)
+      if (!transformedResults || transformedResults.length === 0) {
+        await markSyncError(dbClient, id);
+        return res.status(200).json({
+          success: true,
+          message: "No results found; case marked as sync error (site_sync = 2)",
+          data: []
+        });
+      }
       await updateOrder(dbClient, transformedResults, id);
       return res.status(200).json({
         success: true,
@@ -74,8 +83,8 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
         data: transformedResults
       });
     }
+
     if (transformedResults.length === 0) {
-      await markSyncError(dbClient, id);
       return res.status(200).json({
         success: true,
         message: "No new cases to insert",
@@ -85,7 +94,7 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
 
     //Insert orders into database
     // await insertOrder(dbClient, transformedResults);
-    
+
     res.status(200).json({
       success: true,
       message: "Cron job completed successfully",
@@ -94,6 +103,18 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
 
   } catch (error) {
     console.error('[error] [scrapeCases] Error during scraping service: ', error);
+    // When id is provided, mark case as sync error (same as highCourtCasesUpsert)
+    if (id) {
+      try {
+        const errDbClient = dbClient || await connectToDatabase();
+        await markSyncError(errDbClient, id);
+        if (!dbClient && errDbClient) {
+          await errDbClient.end();
+        }
+      } catch (markError) {
+        console.error('[error] [supremeCourtOTF] Failed to mark sync error:', markError);
+      }
+    }
     res.status(500).json({
       success: false,
       error: error.message

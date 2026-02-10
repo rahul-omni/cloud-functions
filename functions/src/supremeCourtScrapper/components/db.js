@@ -223,13 +223,10 @@ async function updateOrder(dbClient, orderData, id) {
 }
 
 const markSyncError = async (dbClient, id) => {
-    const query = `Update case_details SET
-                sync_status = 2
-            WHERE id = $1`;
-    const values = [
-        id
-    ];
-    await dbClient.query(query, values);
+    if (!id) return;
+    const query = `UPDATE case_details SET site_sync = 2, updated_at = $1 WHERE id = $2`;
+    await dbClient.query(query, [new Date().toISOString(), id]);
+    console.log(`[info] [markSyncError] Set site_sync = 2 for case id: ${id}`);
 }
 
 module.exports = {

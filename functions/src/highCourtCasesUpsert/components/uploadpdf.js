@@ -104,7 +104,12 @@ async function uploadPDFToGCS(cookies, url, filename) {
                     
                     console.log(`🔍  File exists, generating signed URL...`);
                     
-                    // Generate signed URL for immediate access
+                    // Generate signed URL for immediate access.
+                    // Requires: Cloud Function's service account must have role
+                    // "Service Account Token Creator" (roles/iam.serviceAccountTokenCreator) on itself,
+                    // e.g. gcloud iam service-accounts add-iam-policy-binding PROJECT_ID@appspot.gserviceaccount.com
+                    //      --member="serviceAccount:PROJECT_ID@appspot.gserviceaccount.com"
+                    //      --role="roles/iam.serviceAccountTokenCreator"
                     const [signedUrl] = await file.getSignedUrl({
                         version: 'v4',
                         action: 'read',
