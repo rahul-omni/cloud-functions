@@ -24,7 +24,7 @@ const runtimeOpts = {
 function getScrapedFileName() {
   const today = new Date();
   const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const mm = String(today.getMonth() + 2).padStart(2, "0");
   const dd = String(today.getDate()).padStart(2, "0");
 
   return `scraped-${yyyy}-${mm}-${dd}.json`;
@@ -84,7 +84,7 @@ exports.delhiDistrictCourtCauseListScrapper = regionFunctions
 
     // Tomorrow's cause list date (DD/MM/YYYY)
     const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setDate(tomorrow.getDate() + 2);
     const formattedDate =
       `${String(tomorrow.getMonth() + 1).padStart(2, "0")}/` +
       `${String(tomorrow.getDate()).padStart(2, "0")}/` +
@@ -105,7 +105,7 @@ exports.delhiDistrictCourtCauseListScrapper = regionFunctions
       }
 
       // Take batch of 10
-      const batch = remaining.slice(0, 1);
+      const batch = remaining.slice(0, 12);
       console.log(`[info] Batch size: ${batch.length}`);
 
       let browserCourt = null;

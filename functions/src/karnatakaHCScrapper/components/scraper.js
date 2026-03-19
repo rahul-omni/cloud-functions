@@ -3,8 +3,9 @@ const { solveCaptcha } = require('./captcha');
 const { uploadPDFToGCS } = require('./uploadpdf');
 const { bulkInsertOrders, insertOrder, updateJudgmentUrl } = require('./database');
 const { sendNotifications } = require('./notification');
+const axios = require("axios");
+const pdfParse = require("pdf-parse");
 
-// Handle captcha solving with retries
 async function handleCaptcha(page, captchaRetries = 3) {
     let success = false;
     
@@ -12,11 +13,11 @@ async function handleCaptcha(page, captchaRetries = 3) {
         console.log(`[captcha] Attempt ${attempt}/${captchaRetries}`);
         
         // Wait for the captcha input to be visible
-        await page.waitForSelector('input#captcha.captchaClass[name="captcha"]', { visible: true });
+        await page.waitForSelector('input#vercode', { visible: true });
 
         // Clear the captcha field first (for retry attempts)
         if (attempt > 1) {
-            await page.click('input#captcha.captchaClass[name="captcha"]', { clickCount: 3 });
+            await page.click('input#vercode', { clickCount: 3 });
             await page.keyboard.press('Delete');
             await wait(500);
         }
@@ -25,7 +26,7 @@ async function handleCaptcha(page, captchaRetries = 3) {
         await wait(500);
         console.log('[captcha] Capturing captcha image from page...');
         
-        const captchaImg = await page.$('img[alt="CAPTCHA Image"]');
+        const captchaImg = await page.$('img[alt="Captcha Image"]');
         if (!captchaImg) {
             throw new Error('Captcha image not found');
         }
@@ -37,41 +38,24 @@ async function handleCaptcha(page, captchaRetries = 3) {
         console.log('[captcha] GPT says:', answer);
 
         // Click and type the answer
-        await page.click('input#captcha.captchaClass[name="captcha"]');
+        await page.click('input#vercode');
         await wait(500);
-        await page.type('input#captcha.captchaClass[name="captcha"]', answer);
-        console.log('[captcha] Typed captcha into the unique input#captcha.captchaClass[name="captcha"]');
+        await page.type('input#vercode', answer);
+        console.log('[captcha] Typed captcha into the unique input#vercode');
         await wait(1000);
 
-        console.log('[click] Clicking Go button...');
-        await page.click('input.Gobtn');
+        console.log('[click] Clicking Submit button...');
+        await page.click('input[value="Submit"]');
         await wait(3000);
 
         // Check for invalid captcha error
         console.log('[check] Checking for captcha error...');
         try {
-            const errorDiv = await page.$('#errSpan');
+            const errorDiv = await page.$('#captcha_error');
             if (errorDiv) {
                 const isVisible = await page.evaluate(el => el.style.display !== 'none', errorDiv);
                 if (isVisible) {
-                    const errorText = await page.evaluate(el => el.textContent, errorDiv);
-                    if (errorText.includes('Invalid Captcha')) {
-                        console.log(`[retry] Invalid captcha detected: ${errorText.trim()}`);
-                        if (attempt < captchaRetries) {
-                            console.log('[retry] Refreshing captcha and trying again...');
-                            // Refresh the captcha by clicking on it
-                            try {
-                                await captchaImg.click();
-                                await wait(2000);
-                            } catch (e) {
-                                console.log('[retry] Could not refresh captcha image, continuing...');
-                            }
-                            continue; // Go to next attempt
-                        } else {
-                            console.error('[error] All captcha attempts failed. Exiting.');
-                            throw new Error('All captcha attempts failed');
-                        }
-                    }
+                    continue;
                 }
             }
             
@@ -111,47 +95,44 @@ async function checkNoRecords(page) {
 
 // Extract data from results table
 async function extractTableData(page) {
-    console.log('[wait] Waiting for results table...');
-    
-    await page.waitForSelector('#dispTable tbody tr', { timeout: 60000 });
-    await wait(3000);
+    await page.waitForFunction(() => {
+        return document.querySelectorAll(
+            'table.order_table a[href*="display_pdf.php"]'
+        ).length > 0;
+    }, { timeout: 15000 });
 
-    console.log('[extract] Extracting rows from results table...');
-    const allRows = await page.$$eval('#dispTable tbody tr', trs =>
-        trs.map(tr => {
-            const tds = Array.from(tr.querySelectorAll('td'));
-            
-            // Define the column mapping based on typical court order table structure
-            const fieldNames = [
-                'SerialNumber',
-                'DiaryNumber', 
-                'JudgetmentDate',
-                'Order'
-            ];
-            
-            const rowData = {};
-            
-            tds.forEach((td, index) => {
-                const fieldName = fieldNames[index] || `column_${index}`;
-                
-                // Check if this cell contains an ORDER link
-                const orderLink = td.querySelector('a[id="orderid"]');
-                if (orderLink) {
-                    rowData[fieldName] = {
-                        text: td.innerText.trim().replace(/\nopens in new window\s*/gi, ''),
-                        href: orderLink.href
-                    };
-                } else {
-                    rowData[fieldName] = td.innerText.trim();
-                }
-            });
-            
-            return rowData;
-        })
+    await wait(2000); // Extra wait to ensure table is fully loaded
+
+    const results = await page.$$eval(
+        'table.order_table tbody tr',
+        rows => rows
+            .slice(1) // skip header
+            .map(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length < 4) return null;
+
+                const linkEl = row.querySelector(
+                    'a[href*="display_pdf.php"]'
+                );
+
+                return {
+                    orderNumber: cells[0]?.textContent.replace(/\s+/g, ' ').trim() || null,
+
+                    orderOn: cells[1]?.textContent.replace(/\s+/g, ' ').trim() || null,
+
+                    judge: cells[2]?.textContent.replace(/\s+/g, ' ').trim() || null,
+
+                    orderDate: cells[3]?.textContent.replace(/\s+/g, ' ').trim() || null,
+
+                    orderLink: linkEl?.getAttribute('href') || null
+                };
+            })
+            .filter(Boolean)
     );
 
-    return allRows;
+    return results;
 }
+
 
 // Process PDF uploads for judgments
 async function processPDFUploads(processedRows, cookies, date) {
@@ -213,7 +194,7 @@ async function processPDFUploads(processedRows, cookies, date) {
 }
 
 // Process PDF uploads and database insertions with proper checks
-async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
+async function processPDFAndInsertToDB(processedRows, cookies, dbClient) {
     console.log('🔄 [processPDFAndInsertToDB] Processing orders: checking DB, uploading PDFs, and inserting...');
     
     let uploadedCount = 0;
@@ -261,9 +242,9 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                             console.log(`✅ [processPDFAndInsertToDB] PDF uploaded: ${filename}`);
                             const orderData = {...transformRowData(row, date), Order: order };
     
-                            await insertOrder(dbClient, {...orderData,
-                                judgment_url: {orders: [order]},
-                            });
+                            // await insertOrder(dbClient, {...orderData,
+                            //     judgment_url: {orders: [order]},
+                            // });
                             uploadedCount++;
                         } catch (uploadError) {
                             console.log(`[processPDFAndInsertToDB] PDF upload failed. Continuing...`);
@@ -409,35 +390,70 @@ async function updateFilePath(dbClient, entryId, filename) {
 }
 
 // Main scraping function
-async function scrapeData(page, date, dbClient) {
+async function scrapeData(page, dbClient) {
     // Handle captcha
     await handleCaptcha(page);
-    
-    // Check for no records
-    const noRecords = await checkNoRecords(page);
-    if (noRecords) {
-        return [];
-    }
-    
+
+    await page.waitForSelector(
+    'a[onclick^="viewHistory("]',
+    { visible: true }
+    );
+
+    await page.click('a[onclick^="viewHistory("]');
+
     // Extract table data
     const allRows = await extractTableData(page);
     
-    // Filter and process rows
-    const rows = filterValidRows(allRows);
-    const processedRows = processRows(rows);
-    
-    console.log(`[filter] Filtered ${allRows.length} total rows to ${processedRows.length} valid orders`);
-    
-    // Get cookies for PDF uploads
-    const cookies = await page.cookies();
-    
-    // Process PDF uploads
-    const processedResults = await processPDFAndInsertToDB(processedRows, cookies, date, dbClient);
-    
+    console.log(`[filter] Filtered ${allRows.length}`, allRows);
 
-    return {
-        processedResults: processedResults
-    };
+    return
+}
+
+async function getCasesFromPDF(link) {
+  try {
+    console.log("[getCasesFromPDF] Downloading PDF:", link);
+
+    const res = await axios.get(link, {
+      responseType: "arraybuffer",
+      timeout: 120000,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+
+    const pdfBuffer = Buffer.from(res.data);
+
+    console.log(
+      "[getCasesFromPDF] PDF size (MB):",
+      (pdfBuffer.length / 1024 / 1024).toFixed(2)
+    );
+
+    const pdfData = await pdfParse(pdfBuffer);
+    const text = pdfData.text || "";
+
+    // ✅ One regex for both formats
+    const regex = /\b([A-Z]{2,15})\s*([\/-])\s*(\d{1,8})\s*\2\s*(\d{4})\b/g;
+
+    const found = new Set();
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+      const caseType = match[1];
+      const delimiter = match[2]; // "/" or "-"
+      const caseNo = match[3];
+      const year = match[4];
+
+      found.add(`${caseType}${delimiter}${caseNo}${delimiter}${year}`);
+    }
+
+    const cases = [...found];
+    console.log("[getCasesFromPDF] Total unique cases found:", cases.length);
+
+    return cases;
+  } catch (err) {
+    console.error("[getCasesFromPDF] Error:", err.message);
+    return [];
+  }
 }
 
 module.exports = {
@@ -448,5 +464,6 @@ module.exports = {
     scrapeData,
     processPDFAndInsertToDB,
     checkIfEntryExists,
-    updateFilePath
+    updateFilePath,
+    getCasesFromPDF
 }; 

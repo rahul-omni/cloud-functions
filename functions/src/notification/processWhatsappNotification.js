@@ -3,9 +3,9 @@ const functions = require('firebase-functions');
 const { accessWhatsappSecretVersion } = require('../config/secretManager');
 
 // WhatsApp Configuration
-const WHATSAPP_API_URL = functions.config().environment.whatsapp_api_url;
-const WHATSAPP_PHONE_NUMBER_ID = functions.config().environment.whatsapp_phone_number_id;
-const TOKEN = functions.config().environment.whatsapp_token;
+const WHATSAPP_API_URL = 'functions.config().environment.whatsapp_api_url';
+const WHATSAPP_PHONE_NUMBER_ID = 'functions.config().environment.whatsapp_phone_number_id';
+const TOKEN = 'functions.config().environment.whatsapp_token';
 
 const getWhatsAppToken = async () => {
   try {

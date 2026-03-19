@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { wait, digits } = require('./utils');
+const { error } = require('firebase-functions/logger');
 
 /**
  * Fill the cause list form with provided parameters
@@ -253,12 +254,12 @@ const handleCaptcha = async (page, solveCaptcha) => {
       await wait(3000);
 
       // Check if we got an error message or if the page reloaded with a new captcha
-      const errorElement = await page.$('.error, .alert-danger, .captcha-error');
+      const errorElement = await page.$('.notfound','.error, .alert-danger, .captcha-error');
 
       if (errorElement) {
         const errorText = await page.evaluate(el => el.textContent, errorElement);
         console.log(`[warning] [formHandler] Captcha error detected: ${errorText}`);
-        if (attempt < maxAttempts) {
+        if (attempt < maxAttempts && errorText.toLowerCase().includes('incorrect')) {
           console.log(`[info] [formHandler] Retrying captcha...`);
           continue;
         }

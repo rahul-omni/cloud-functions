@@ -67,38 +67,64 @@ function setupDialogHandler(page) {
 // Navigate to main page and handle initial setup
 async function navigateToMainPage(page, modalHandled) {
     console.log('[navigateToMainPage] Going to main page...');
-    await page.goto('https://hcservices.ecourts.gov.in/hcservices/main.php', { waitUntil: 'networkidle2' });
+    await page.goto('https://www.allahabadhighcourt.in/causelist/viewlistA.jsp', {
+        waitUntil: 'networkidle2'
+    });
+
     await wait(3000);
 
-    console.log('[navigateToMainPage] About to click Court Orders...');
-    await page.click('#leftPaneMenuCO');
-    console.log('[navigateToMainPage] Clicked Court Orders. Waiting for modal...');
-    await wait(3000);
+    // ✅ Click first subheading (Cause List Allahabad)
+    await page.waitForSelector('h4.subheading', { visible: true });
+    const headings = await page.$$('h4.subheading');
+    if (!headings.length) throw new Error('No h4.subheading found');
 
-    // Handle modal
-    if (!modalHandled) {
-        console.log('[modal] No JS alert detected, checking for custom HTML modal...');
-        const okClicked = await page.evaluate(() => {
-            const btn = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'))
-                .find(el => el.offsetParent !== null && /ok/i.test(el.textContent || el.value));
-            if (btn) {
-                btn.click();
-                return true;
-            }
-            return false;
-        });
-        if (okClicked) {
-            console.log('[modal] Custom HTML modal OK clicked via evaluate.');
-            await wait(2000);
-            modalHandled = true;
-        } else {
-            console.log('[modal] No custom HTML modal found via evaluate.');
-        }
-    } else {
-        console.log('[modal] JS alert was handled.');
-    }
-    console.log(`[navigateToMainPage] navigated to main page`);
-    return modalHandled;
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle2' }),
+        headings[0].click()
+    ]);
+
+    // ✅ Wait for GO button and click
+    await page.waitForSelector('input.btn.btn-primary.mb-2[value="GO"]', { visible: true });
+
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle2' }),
+        page.click('input.btn.btn-primary.mb-2[value="GO"]')
+    ]);
+
+    // ✅ Select first radio (Court Wise) and submit
+    await page.waitForSelector('input.form-check-input[name="criteria"][value="court"]', {
+        visible: true
+    });
+
+    await page.click('input.form-check-input[name="criteria"][value="court"]');
+
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle2' }),
+        page.click('input.btn.btn-primary[value="Submit"]')
+    ]);
+
+    console.log('[navigateToMainPage] First Submit done. Waiting for second Submit...');
+
+    // ✅ Wait for second Submit button and click again
+    await page.waitForSelector('input.btn.btn-primary[value="Submit"]', { visible: true });
+
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle2' }),
+        page.click('input.btn.btn-primary[value="Submit"]')
+    ]);
+
+    console.log('[navigateToMainPage] Second Submit done. Page ready');
+
+    // ✅ wait for the PDF link and extract href
+    await page.waitForSelector('a.btn.btn-sm.btn-link.text-primary[target="_blank"]', { visible: true });
+
+    const pdfLink = await page.$eval(
+        'a.btn.btn-sm.btn-link.text-primary[target="_blank"]',
+        (el) => el.href
+    );
+
+    console.log('[PDF LINK]', pdfLink);
+    return pdfLink;
 }
 
 // Select High Court of Delhi
@@ -319,36 +345,41 @@ async function setDateFields(page, date) {
 }
 
 async function setDiaryNumberFields(page, diaryNumber, caseTypeValue) {
-    console.log(`[date] clicking on case number tab`);
-    await page.click('#COcaseNumber');
-    await wait(3000);
 
-    // Parse diary number to extract case number and year
-    const [caseNumber, year] = diaryNumber.split('/');
-    console.log(`[parse] Diary number: ${diaryNumber} -> Case: ${caseNumber}, Year: ${year}`);
+  // Parse diary number
+  const [caseNumber, year] = diaryNumber.split('/');
+  console.log(`[parse] Diary number: ${diaryNumber} → Case: ${caseNumber}, Year: ${year}`);
 
-    // Handle case type dropdown
-    console.log(`[dropdown] Selecting case type: ${caseTypeValue}`);
-    await page.click('#case_type_order');
-    await wait(1000);
-    await page.select('#case_type_order', caseTypeMap[caseTypeValue].toString());
-    await wait(2000);
+  // ─────────────────────────────────────────────
+  // Case Type
+  console.log(`[dropdown] Selecting case type: ${caseTypeValue}`);
+  await page.waitForSelector('#case_type', { visible: true });
 
-    // Fill case number field
-    console.log(`[input] Filling case number: ${caseNumber}`);
-    await page.click('#case_no_order');
-    await wait(500);
-    await page.type('#case_no_order', caseNumber);
-    await wait(1000);
+  // caseTypeValue is already in abbreviated form (e.g. CRL.A.)
+  await page.select('#case_type', caseTypeValue.toString());
+  await wait(1500);
 
-    // Fill year field
-    console.log(`[input] Filling year: ${year}`);
-    await page.click('#rgyearCaseOrder');
-    await wait(500);
-    await page.type('#rgyearCaseOrder', year);
-    await wait(1000);
+  // ─────────────────────────────────────────────
+  // Case Number
+  console.log(`[input] Filling case number: ${caseNumber}`);
+  await page.waitForSelector('#case_no', { visible: true });
 
-    console.log(`[complete] All fields filled - Case Type: ${caseTypeValue}, Case Number: ${caseNumber}, Year: ${year}`);
+  await page.click('#case_no', { clickCount: 3 });
+  await page.type('#case_no', caseNumber);
+  await wait(1000);
+
+  // ─────────────────────────────────────────────
+  // Year
+  console.log(`[dropdown] Selecting year: ${year}`);
+  await page.waitForSelector('#case_year', { visible: true });
+
+  await page.click('#case_year', { clickCount: 3 });
+  await page.type('#case_year', year);
+  await wait(1000);
+
+  console.log(
+    `[complete] Filled → Case Type: ${caseTypeValue}, Case Number: ${caseNumber}, Year: ${year}`
+  );
 }
 
 module.exports = {

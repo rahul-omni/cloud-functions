@@ -4,93 +4,71 @@ const { uploadPDFToGCS } = require('./uploadpdf');
 const { bulkInsertOrders, insertOrder, updateJudgmentUrl } = require('./database');
 const { sendNotifications } = require('./notification');
 
-// Handle captcha solving with retries
 async function handleCaptcha(page, captchaRetries = 3) {
-    let success = false;
-    
     for (let attempt = 1; attempt <= captchaRetries; attempt++) {
         console.log(`[captcha] Attempt ${attempt}/${captchaRetries}`);
-        
-        // Wait for the captcha input to be visible
-        await page.waitForSelector('input#captcha.captchaClass[name="captcha"]', { visible: true });
 
-        // Clear the captcha field first (for retry attempts)
-        if (attempt > 1) {
-            await page.click('input#captcha.captchaClass[name="captcha"]', { clickCount: 3 });
-            await page.keyboard.press('Delete');
-            await wait(500);
+        await page.waitForSelector('#captchacode', { visible: true });
+
+        // Clear input
+        await page.evaluate(() => {
+            const input = document.querySelector('#captchacode');
+            if (input) input.value = '';
+        });
+
+        // Wait for captcha canvas
+        const canvasHandle = await page.waitForSelector(
+            'canvas#captcha_div',
+            { visible: true }
+        );
+        await wait(500);
+
+        // Screenshot captcha (DO NOT use toDataURL)
+        const captchaBuffer = await canvasHandle.screenshot({ type: 'png' });
+
+        const rawAnswer = await solveCaptcha(captchaBuffer);
+        const answer = (rawAnswer || '').replace(/\D/g, '');
+
+        console.log('[captcha] OCR:', answer);
+
+        if (!answer) {
+            await page.click('canvas#captcha_div');
+            await wait(1500);
+            continue;
         }
 
-        // Get the captcha image directly from the page
-        await wait(500);
-        console.log('[captcha] Capturing captcha image from page...');
-        
-        const captchaImg = await page.$('img[alt="CAPTCHA Image"]');
-        if (!captchaImg) {
-            throw new Error('Captcha image not found');
+        // Flag for this attempt only
+        let invalidCaptcha = false;
+
+        // 👇 listen for ONLY ONE dialog
+        page.once('dialog', async dialog => {
+            console.log('[alert]', dialog.message());
+            invalidCaptcha = true;
+        });
+
+        // Submit
+        await page.type('#captchacode', answer, { delay: 80 });
+        await wait(300);
+        await page.click('#go_btn');
+
+        // Give time for dialog to appear (if wrong)
+        await wait(2500);
+
+        // ✅ No dialog → success
+        if (!invalidCaptcha) {
+            console.log('[success] Captcha accepted (no dialog)');
+            return;
         }
-        
-        // Take a screenshot of just the captcha element
-        const captchaBuffer = await captchaImg.screenshot();
-        
-        const answer = await solveCaptcha(captchaBuffer);
-        console.log('[captcha] GPT says:', answer);
 
-        // Click and type the answer
-        await page.click('input#captcha.captchaClass[name="captcha"]');
-        await wait(500);
-        await page.type('input#captcha.captchaClass[name="captcha"]', answer);
-        console.log('[captcha] Typed captcha into the unique input#captcha.captchaClass[name="captcha"]');
-        await wait(1000);
+        console.log('[retry] Invalid captcha');
 
-        console.log('[click] Clicking Go button...');
-        await page.click('input.Gobtn');
-        await wait(3000);
-
-        // Check for invalid captcha error
-        console.log('[check] Checking for captcha error...');
-        try {
-            const errorDiv = await page.$('#errSpan');
-            if (errorDiv) {
-                const isVisible = await page.evaluate(el => el.style.display !== 'none', errorDiv);
-                if (isVisible) {
-                    const errorText = await page.evaluate(el => el.textContent, errorDiv);
-                    if (errorText.includes('Invalid Captcha')) {
-                        console.log(`[retry] Invalid captcha detected: ${errorText.trim()}`);
-                        if (attempt < captchaRetries) {
-                            console.log('[retry] Refreshing captcha and trying again...');
-                            // Refresh the captcha by clicking on it
-                            try {
-                                await captchaImg.click();
-                                await wait(2000);
-                            } catch (e) {
-                                console.log('[retry] Could not refresh captcha image, continuing...');
-                            }
-                            continue; // Go to next attempt
-                        } else {
-                            console.error('[error] All captcha attempts failed. Exiting.');
-                            throw new Error('All captcha attempts failed');
-                        }
-                    }
-                }
-            }
-            
-            // If we get here, no error was found - captcha was successful
-            console.log('[success] Captcha accepted, proceeding...');
-            success = true;
-            break;
-            
-        } catch (error) {
-            console.log('[check] Error checking for captcha error, assuming success');
-            success = true;
-            break;
+        if (attempt < captchaRetries) {
+            await page.click('canvas#captcha_div');
+            await wait(2000);
         }
     }
 
-    if (!success) {
-        console.error('[error] Failed to solve captcha after 3 attempts. Exiting.');
-        throw new Error('Failed to solve captcha after 3 attempts');
-    }
+    throw new Error('Captcha solving failed');
 }
 
 // Check for no records found
@@ -111,46 +89,37 @@ async function checkNoRecords(page) {
 
 // Extract data from results table
 async function extractTableData(page) {
-    console.log('[wait] Waiting for results table...');
-    
-    await page.waitForSelector('#dispTable tbody tr', { timeout: 60000 });
-    await wait(3000);
+    // Wait until table rows exist
+    await page.waitForFunction(() => {
+        const rows = document.querySelectorAll('table.table-info tbody tr');
+        return rows.length > 0;
+    }, { timeout: 15000 });
 
-    console.log('[extract] Extracting rows from results table...');
-    const allRows = await page.$$eval('#dispTable tbody tr', trs =>
-        trs.map(tr => {
-            const tds = Array.from(tr.querySelectorAll('td'));
-            
-            // Define the column mapping based on typical court order table structure
-            const fieldNames = [
-                'SerialNumber',
-                'DiaryNumber', 
-                'JudgetmentDate',
-                'Order'
-            ];
-            
-            const rowData = {};
-            
-            tds.forEach((td, index) => {
-                const fieldName = fieldNames[index] || `column_${index}`;
-                
-                // Check if this cell contains an ORDER link
-                const orderLink = td.querySelector('a[id="orderid"]');
-                if (orderLink) {
-                    rowData[fieldName] = {
-                        text: td.innerText.trim().replace(/\nopens in new window\s*/gi, ''),
-                        href: orderLink.href
-                    };
-                } else {
-                    rowData[fieldName] = td.innerText.trim();
-                }
-            });
-            
-            return rowData;
-        })
+    const results = await page.$$eval('table.table-info tbody tr', rows =>
+        rows.map(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 5) return null;
+
+            const viewLink = cells[4].querySelector('a');
+
+            return {
+                serialNo: cells[0].innerText.trim(),
+
+                caseNumber: cells[1].innerText
+                    .replace(/\s+/g, ' ')
+                    .trim(),
+
+                petitionerVsRespondent: cells[2].innerText.trim(),
+
+                status: cells[3].innerText.trim(),
+
+                viewOnClick: viewLink
+                    ? viewLink.getAttribute('onclick')
+                    : null
+            };
+        }).filter(Boolean)
     );
-
-    return allRows;
+    return results;
 }
 
 // Process PDF uploads for judgments
@@ -213,7 +182,7 @@ async function processPDFUploads(processedRows, cookies, date) {
 }
 
 // Process PDF uploads and database insertions with proper checks
-async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
+async function processPDFAndInsertToDB(processedRows, cookies, dbClient) {
     console.log('🔄 [processPDFAndInsertToDB] Processing orders: checking DB, uploading PDFs, and inserting...');
     
     let uploadedCount = 0;
@@ -261,9 +230,9 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                             console.log(`✅ [processPDFAndInsertToDB] PDF uploaded: ${filename}`);
                             const orderData = {...transformRowData(row, date), Order: order };
     
-                            await insertOrder(dbClient, {...orderData,
-                                judgment_url: {orders: [order]},
-                            });
+                            // await insertOrder(dbClient, {...orderData,
+                            //     judgment_url: {orders: [order]},
+                            // });
                             uploadedCount++;
                         } catch (uploadError) {
                             console.log(`[processPDFAndInsertToDB] PDF upload failed. Continuing...`);
@@ -409,31 +378,63 @@ async function updateFilePath(dbClient, entryId, filename) {
 }
 
 // Main scraping function
-async function scrapeData(page, date, dbClient) {
+async function scrapeData(page, dbClient) {
     // Handle captcha
     await handleCaptcha(page);
-    
-    // Check for no records
-    const noRecords = await checkNoRecords(page);
-    if (noRecords) {
-        return [];
-    }
     
     // Extract table data
     const allRows = await extractTableData(page);
     
-    // Filter and process rows
-    const rows = filterValidRows(allRows);
-    const processedRows = processRows(rows);
-    
-    console.log(`[filter] Filtered ${allRows.length} total rows to ${processedRows.length} valid orders`);
-    
-    // Get cookies for PDF uploads
-    const cookies = await page.cookies();
-    
-    // Process PDF uploads
-    const processedResults = await processPDFAndInsertToDB(processedRows, cookies, date, dbClient);
-    
+    // console.log(`[filter] Filtered ${allRows.length} total rows to ${processedRows.length} valid orders`);
+
+    await page.evaluate(() => {
+        const link = document.querySelector('a.btn.btn-link');
+        if (!link) throw new Error('View link not found');
+        link.click();
+    });
+
+    await page.waitForSelector(
+        'button[onclick^="viewOrderSheet"]',
+        { visible: true, timeout: 15000 }
+    );
+
+
+    await page.evaluate(() => {
+        const btn = document.querySelector(
+            'button[onclick^="viewOrderSheet"]'
+        );
+        if (!btn) throw new Error('View Order Sheet button not found');
+        btn.click();
+    });
+
+    await page.waitForSelector(
+        'table.table-ordr tbody tr',
+        { visible: true, timeout: 15000 }
+    );
+
+    const orders = await page.$$eval(
+        'table.table-ordr tbody tr',
+        rows => rows.map(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 3) return null;
+
+            const link = cells[2].querySelector('a');
+
+            return {
+                judgementDate: cells[1].innerText.trim(),
+                gcsPath: link ? link.href : null
+            };
+        }).filter(Boolean)
+    );
+
+    const judgementUrl = { orders: orders };
+    const caseNo = allRows[0].caseNumber;
+    const parties = allRows[0].petitionerVsRespondent;
+    const processedResults = {
+        caseNo: caseNo,
+        parties: parties,
+        judgment_url: judgementUrl
+    };
 
     return {
         processedResults: processedResults

@@ -26,6 +26,11 @@ const delhiCauseListScrapper = async (formData, page) => {
     for (let attempt = 1; attempt <= 2; attempt++) {
       if (attempt == 1){
         await fillForm(page, formData);
+        const value = "2"; // "3" for civil
+        await page.evaluate((val) => {
+          const radio = document.querySelector(`input.causeType[value="${val}"]`);
+          if (radio) radio.click(); // <-- important for triggering UI events
+        }, value);
       }else{
         const value = "3"; // "3" for criminal
         await page.evaluate((val) => {
