@@ -7,19 +7,22 @@ const { getCaseTypeCode } = require('./components/mapping');
 // Main PHHC scraper function for specific case (by diary number)
 // originalCaseId: The database ID of the case to update (if provided)
 // originalDiaryNumber: The original diary number format (e.g., "4112/2025") used to construct case number
-const scrapingDetails = async (date, diaryNumber, caseTypeValue, originalCaseId = null, originalDiaryNumber = null) => {
+// connectionString: PostgreSQL URL from Secret Manager or .env (required when DB is needed)
+const scrapingDetails = async (date, diaryNumber, caseTypeValue, originalCaseId = null, originalDiaryNumber = null, connectionString = null) => {
     console.log(`[start] [scrapingDetails] Scraping PHHC case for diary number: ${diaryNumber}`);
     if (originalCaseId) {
         console.log(`[scrapingDetails] Will update existing case with id: ${originalCaseId}`);
     }
 
     let dbClient;
-    try {
-        dbClient = await connectToDatabase();
-        console.log('✅  Connected to database');
-    } catch (dbError) {
-        console.error('❌  Database setup failed:', dbError.message);
-        console.log('⚠️   Continuing without database...');
+    if (connectionString) {
+        try {
+            dbClient = await connectToDatabase(connectionString);
+            console.log('✅  Connected to database');
+        } catch (dbError) {
+            console.error('❌  Database setup failed:', dbError.message);
+            console.log('⚠️   Continuing without database...');
+        }
     }
 
     const { browser, page } = await initializeBrowser();

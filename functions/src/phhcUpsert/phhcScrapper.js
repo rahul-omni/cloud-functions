@@ -3,16 +3,19 @@ const { initializeBrowser, navigateToSearchPage, fillCaseSearchForm, submitSearc
 const { extractCaseDetails, processCaseAndInsertToDB } = require('./components/scraper');
 
 // Main PHHC scraper function - for date-based scraping (bulk)
-const PHHCJudgmentsScrapper = async (date, caseType, caseNumber, caseYear) => {
+// connectionString: PostgreSQL URL from Secret Manager or .env (required when DB is needed)
+const PHHCJudgmentsScrapper = async (date, caseType, caseNumber, caseYear, connectionString = null) => {
     console.log(`[start] [PHHCJudgmentsScrapper] Scraping PHHC judgments for: ${date || 'specific case'}`);
 
     let dbClient;
-    try {
-        dbClient = await connectToDatabase();
-        console.log('✅  Connected to database');
-    } catch (dbError) {
-        console.error('❌  Database setup failed:', dbError.message);
-        console.log('⚠️   Continuing without database...');
+    if (connectionString) {
+        try {
+            dbClient = await connectToDatabase(connectionString);
+            console.log('✅  Connected to database');
+        } catch (dbError) {
+            console.error('❌  Database setup failed:', dbError.message);
+            console.log('⚠️   Continuing without database...');
+        }
     }
 
     const { browser, page } = await initializeBrowser();

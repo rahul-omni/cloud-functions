@@ -1,10 +1,15 @@
-const functions = require('firebase-functions');
 const { Client } = require('pg');
 
-// Database connection function
-async function connectToDatabase() {
+/**
+ * Connect to PostgreSQL using the given connection string.
+ * @param {string} connectionString - From Secret Manager (production) or process.env.DATABASE_URL / .env (local).
+ */
+async function connectToDatabase(connectionString) {
+  if (!connectionString || !connectionString.trim()) {
+    throw new Error('Database connection string is required (Secret Manager DATABASE_URL or .env DATABASE_URL).');
+  }
   const client = new Client({
-    connectionString: functions.config().environment.database_url,
+    connectionString: connectionString.trim(),
     ssl: {
       rejectUnauthorized: false
     }

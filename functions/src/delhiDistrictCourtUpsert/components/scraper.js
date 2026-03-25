@@ -271,8 +271,8 @@ async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, 
                         try {
                             console.log(`[extract] Getting details for case: ${result.case_type_number_year}`);
                             
-                            // Wait for results to stabilize
-                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            // Wait for results to stabilize (reduced for timeout)
+                            await new Promise(resolve => setTimeout(resolve, 1000));
                             
                             // Get the view button with matching case number
                             const viewButton = await page.evaluateHandle(caseNumber => {
@@ -379,8 +379,8 @@ async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, 
                                             return tables.length > 0;
                                         }, { timeout: 5000 });
                                         
-                                        // Additional wait for dynamic content
-                                        await new Promise(resolve => setTimeout(resolve, 2000));
+                                        // Additional wait for dynamic content (reduced for timeout)
+                                        await new Promise(resolve => setTimeout(resolve, 1000));
                                         
                                         // Verify content
                                         const contentCheck = await page.evaluate(() => {
@@ -401,7 +401,7 @@ async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, 
                                         if (contentCheck.hasCaseDetails && contentCheck.hasCaseStatus) {
                                             contentLoaded = true;
                                             console.log('[debug] Required content found');
-                                            await new Promise(resolve => setTimeout(resolve, 2000));
+                                            await new Promise(resolve => setTimeout(resolve, 1000));
                                             
                                             // Extract and log table contents
                                             const tableData = await page.evaluate(() => {
@@ -450,7 +450,7 @@ async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, 
                                     
                                     retryCount++;
                                     if (retryCount < maxRetries) {
-                                        await new Promise(resolve => setTimeout(resolve, 2000));
+                                        await new Promise(resolve => setTimeout(resolve, 1000));
                                     }
                                 }
                                 
@@ -462,8 +462,8 @@ async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, 
                                 
                                 console.log('[debug] Content loaded successfully');
                                 
-                                // Additional wait for any animations/transitions
-                                await new Promise(resolve => setTimeout(resolve, 2000));
+                                // Additional wait for any animations/transitions (reduced for timeout)
+                                await new Promise(resolve => setTimeout(resolve, 1000));
                                 
                             } catch (error) {
                                 console.error('[error] Failed to load content:', error.message);
@@ -472,9 +472,8 @@ async function scrapeData(page, date, diaryNumber, caseTypeValue, courtComplex, 
                             
                             console.log('[debug] Content already loaded and verified, proceeding with extraction...');
                             
-                            // Extract case details
-                            // Give extra time for dynamic content to load
-                            await new Promise(resolve => setTimeout(resolve, 3000));
+                            // Extract case details (reduced wait for timeout)
+                            await new Promise(resolve => setTimeout(resolve, 1500));
 
                             // Verify that the content is loaded and get initial structure
                             const contentCheck = await page.evaluate(() => {
@@ -1017,9 +1016,9 @@ async function handleCaptcha(page, captchaRetries = 20) {
             console.log('[form] Submitting search form...');
             await page.click('input[type="submit"][value="Search"]');
             
-            // Wait for response - results take at least 20 seconds to load
-            console.log('[wait] Waiting for search results (this takes 20+ seconds)...');
-            await wait(5000); // Initial wait
+            // Wait for response - results take time to load (reduced to stay under 9min timeout)
+            console.log('[wait] Waiting for search results...');
+            await wait(3000); // Initial wait
             
             // Quick check for immediate errors only
             let hasError = await page.$('.error, .alert-danger, .notfound');
@@ -1041,9 +1040,9 @@ async function handleCaptcha(page, captchaRetries = 20) {
                 }
             }
             
-            // Wait for results to load (minimum 20 seconds total)
+            // Wait for results to load (reduced to stay under 9min timeout)
             console.log('[wait] No immediate errors, waiting for results to load...');
-            await wait(15000); // Wait 15 more seconds (20 total so far)
+            await wait(10000); // 10s (13s total so far)
             
             // Final check for errors after full wait
             hasError = await page.$('.error, .alert-danger, .notfound');

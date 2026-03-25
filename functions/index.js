@@ -1,41 +1,43 @@
 // const { scrapeSupremeCourtCases:scrapeSupremeCourtCasesAPI } = require("./src/supremeCourtScrapper/index.js");
+const { supremeCourtOTF } = require("./src/supremeCourtOTF/index.js");
+const { phhcUpsert } = require("./src/phhcUpsert/index.js");
+const { highCourtCasesUpsert } = require("./src/highCourtCasesUpsert/index.js");
+const {delhiDistrictCourtUpsert} = require("./src/delhiDistrictCourtUpsert/index.js");
+
 const { processNotifications } = require("./src/notification/index.js");
-const { scrapeCases:cronForScraperService} = require("./src/scraperService/index.js");
-const { createCaseAndNotify } = require("./src/createCaseAndNotify/index.js");
 const { testFunction } = require("./src/testFunction/index.js");
+const { testWhatsAppTemplateNotification } = require("./src/testFunction/index.js");
 const { fetchHighCourtJudgments } = require("./src/highCourtScrapper/index.js");
-const { fetchDistrictCourtJudgments } = require("./src/districtCourtScrapper/index.js");
-const { supremeCourtOTF } = require("./src/supremeCourtScrapper/index.js");
+const { gurugramDistrictCourtUpsert } = require("./src/gurugramDistrictCourtUpsert/index.js");
 const { scCauseListScrapper } = require("./src/scCauseListScrapper/index.js");
 const { hcCauseListScrapper } = require("./src/hcCauseListScrapper/index.js");
 const { cronForSCCauseList } = require("./src/services/CronServiceCauseList.js");
 const {tentativeDateSC} = require("./src/tentativeDateSC/index.js");
-const { highCourtCasesUpsert } = require("./src/highCourtCasesUpsert/index.js");
-const {districtEastDelhiCourtScrapper} = require("./src/districtEastDelhiCourtScrapper/index.js");
 const {supremeCourtCasesUpsert} = require("./src/supremeCourtCasesUpsert/index.js");
 const {delhiDistrictCourtCauseListScrapper} = require("./src/delhiDistrictCourtCauseListScrapper/index.js");
 const {phhcCauseListScrapper} = require("./src/phhcCauseListScrapper/index.js");
 const {rhcJaipurCauseListScrapper} = require("./src/rhcJaipurCauseListScrapper/index.js");
-const {phhcUpsert} = require("./src/phhcUpsert/index.js");
 
 module.exports = {
   // scrapeSupremeCourtCasesAPI,
-  processNotifications,
-  cronForScraperService,
-  createCaseAndNotify,
-  testFunction,
-  fetchHighCourtJudgments,
-  fetchDistrictCourtJudgments,
   supremeCourtOTF,
-  scCauseListScrapper,
-  cronForSCCauseList,
-  hcCauseListScrapper,
-  tentativeDateSC,
+  phhcUpsert,
   highCourtCasesUpsert,
-  districtEastDelhiCourtScrapper,
+  delhiDistrictCourtUpsert,
+  gurugramDistrictCourtUpsert,
+  tentativeDateSC,
   supremeCourtCasesUpsert,
-  delhiDistrictCourtCauseListScrapper,
-  phhcCauseListScrapper,
-  rhcJaipurCauseListScrapper,
-  phhcUpsert
+  // processNotifications,
+  // cronForScraperService,
+  // testFunction,
+  testWhatsAppTemplateNotification,
+  // fetchHighCourtJudgments,
+  scCauseListScrapper,
+  // cronForSCCauseList,
+  hcCauseListScrapper
+  // tentativeDateSC,
+  // supremeCourtCasesUpsert,
+  // delhiDistrictCourtCauseListScrapper,
+  // phhcCauseListScrapper,
+  // rhcJaipurCauseListScrapper,
 };

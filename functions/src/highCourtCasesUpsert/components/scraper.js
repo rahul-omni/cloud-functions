@@ -1,7 +1,7 @@
 const { wait, filterValidRows, processRows, transformRowData } = require('./utils');
 const { solveCaptcha } = require('./captcha');
 const { uploadPDFToGCS } = require('./uploadpdf');
-const { bulkInsertOrders, insertOrder, updateJudgmentUrl } = require('./database');
+const { bulkInsertOrders, insertOrder, updateJudgmentUrl, updateCaseNumber, updateSiteSync } = require('./database');
 const { sendNotifications } = require('./notification');
 
 // Handle captcha solving with retries
@@ -266,16 +266,38 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
 
                         await insertOrder(dbClient, {...orderData,
                             judgment_url: {orders: [order]},
-                        });
+                        }, sync_site);
                         uploadedCount++;
                     } catch (uploadError) {
                         console.error(`❌ [processPDFAndInsertToDB] PDF upload failed for ${row.DiaryNumber}:`, uploadError.message);
-                        console.log(`[processPDFAndInsertToDB] PDF upload failed. Continuing...`);
-                        // Continue without PDF path
+                        console.log(`[processPDFAndInsertToDB] PDF upload failed. Inserting with site_sync=2 (error)...`);
+                        try {
+                            const orderData = { ...transformRowData(row, date), judgment_url: { orders: [] } };
+                            await insertOrder(dbClient, orderData, 2);
+                        } catch (insertErr) {
+                            console.error(`❌ [processPDFAndInsertToDB] Insert with site_sync=2 failed:`, insertErr.message);
+                        }
                     }
-                }  
+                } else {
+                    console.log(`⏭️ [processPDFAndInsertToDB] New entry, no PDF link. Inserting with site_sync.`);
+                    try {
+                        const orderData = { ...transformRowData(row, date), judgment_url: { orders: [] } };
+                        await insertOrder(dbClient, orderData, sync_site);
+                    } catch (insertErr) {
+                        console.error(`❌ [processPDFAndInsertToDB] Insert for new entry without PDF failed:`, insertErr.message);
+                    }
+                }
             } else {
                 // Entry exists - check if PDF needs to be uploaded                
+                // Self-heal: ensure case_number includes full diary (e.g. 753/2024)
+                if (row.case_type && row.DiaryNumber) {
+                    const desiredCaseNumber = `${row.case_type}/${row.DiaryNumber}`;
+                    try {
+                        await updateCaseNumber(dbClient, existingEntry.id, desiredCaseNumber);
+                    } catch (e) {
+                        // non-fatal; keep processing PDFs / site_sync
+                    }
+                }
                 if (row.Order && row.Order.href) {  
                     try {
                         const diarySanitized = String(row.DiaryNumber).replace(/[^\w]+/g, '_');
@@ -295,8 +317,9 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
 
                         for (const order of updatedOrder.orders) {
                             if (order.judgmentDate == row.JudgetmentDate) {
-                                console.log(`ℹ️  PDF for judgment date ${date} already exists in database. Skipping update.`);
+                                console.log(`ℹ️  PDF for judgment date ${row.JudgetmentDate} already exists in database. Updating site_sync only.`);
                                 existsInOrders = true;
+                                await updateSiteSync(dbClient, existingEntry.id, sync_site);
                                 break;
                             }
                         }
@@ -343,10 +366,12 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                         }
                     } catch (uploadError) {
                         console.error(`❌ [processPDFAndInsertToDB] PDF upload failed for existing entry ${row.DiaryNumber}:`, uploadError.message);
-                        console.log(`[processPDFAndInsertToDB] PDF upload failed. Continuing...`);
+                        console.log(`[processPDFAndInsertToDB] PDF upload failed. Updating site_sync and continuing...`);
+                        await updateSiteSync(dbClient, existingEntry.id, sync_site);
                     }
                 } else {
-                    console.log(`⏭️ [processPDFAndInsertToDB] Entry exists, no PDF link to upload`);
+                    console.log(`⏭️ [processPDFAndInsertToDB] Entry exists, no PDF link to upload. Updating site_sync.`);
+                    await updateSiteSync(dbClient, existingEntry.id, sync_site);
                 }
             }
             

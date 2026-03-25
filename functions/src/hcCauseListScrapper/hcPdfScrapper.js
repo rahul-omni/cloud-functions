@@ -1,5 +1,5 @@
-const functions = require('firebase-functions');
 const axios = require('axios');
+const { getOpenAiKeyFromSecretManager } = require('../config/getOpenAiKeyFromSecretManager');
 
 // Import all components from index
 const {
@@ -16,18 +16,17 @@ const {
 } = require('./components');
 const { setupDialogHandler } = require('../highCourtScrapper/components/browser');
 
-const openAiKey = functions.config().environment.openai_api_key;
-const KEY = openAiKey;
-
-
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function solveCaptcha(buf) {
+    const KEY = await getOpenAiKeyFromSecretManager(undefined, undefined, 'hcPdfScrapper');
+    if (!KEY) throw new Error('OpenAI API key not available from Secret Manager');
+
     const dataURL = 'data:image/png;base64,' + buf.toString('base64');
     
     const r = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
-            model: 'gpt-4-turbo',
+            model: 'gpt-4o',
             messages: [{
                 role: 'user',
                 content: [

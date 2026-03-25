@@ -36,3 +36,6 @@ Thumbs.db
 .firebaserc
 */package-lock.json
 package-lock.json
+
+
+.env

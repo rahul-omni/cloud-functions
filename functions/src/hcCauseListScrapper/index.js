@@ -60,19 +60,40 @@ async function fetchUploadAndParsePdf(url, cookieHeader, bucketName, filePath) {
 exports.hcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https.onRequest(async (req, res) => {
   console.log("[start] hcCauseListScrapper started at:", new Date().toISOString());
 
-  const date = new Date();
+  // Accept date override from payload: { "date": "DD-MM-YYYY" }
+  // If not provided, default to tomorrow (existing behavior).
+  let body = req.body;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
+  }
 
-  date.setDate(date.getDate() + 1);
+  const payloadDate = (body && typeof body.date === "string") ? body.date.trim() : "";
+  const ddmmyyyy = /^\d{2}-\d{2}-\d{4}$/;
 
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // months are 0-based
-  const year = date.getFullYear();
+  let formattedDate = "";
+  if (payloadDate && ddmmyyyy.test(payloadDate)) {
+    formattedDate = payloadDate;
+    console.log(`[info] Using payload date override: ${formattedDate}`);
+  } else {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // months are 0-based
+    const year = date.getFullYear();
+    formattedDate = `${day}-${month}-${year}`;
+    if (payloadDate) {
+      console.log(`[warning] Invalid payload date "${payloadDate}". Expected DD-MM-YYYY. Falling back to default: ${formattedDate}`);
+    }
+  }
 
-  const formattedDate = `${day}-${month}-${year}`;
   const formData = { causelistDate: formattedDate, stateCourt: "26", courtBench: "1" };
 
   let extractedPdfs = {};
-  const fileName = `extractedPdfs-HC-${formattedDate}.json`;
+  const fileName = `extractedPdfs-HC-DELHI-${formattedDate}.json`;
   const file = storage.bucket(bucketName).file(fileName);
   const causeList = [];
 
@@ -108,7 +129,7 @@ exports.hcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https.onReque
       // Save JSON to bucket
       await file.save(JSON.stringify(extractedPdfs, null, 2), { contentType: "application/json" });
       console.log(`[info] Saved extractedPdfs JSON to gs://${bucketName}/${fileName}`);
-      return res.status(200).json({ success: true, message: "HC cron job completed successfully" });
+      // Continue to notification step in the same run (previously we returned early here).
     }
 
     // Get subscribed cases
@@ -121,28 +142,45 @@ exports.hcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https.onReque
       return parts.map((p) => (/^\d+$/.test(p) ? p.replace(/^0+/, "") : p.replace(/[-/]/g, ""))).join("").replace(/\s+/g, "").toLowerCase();
     };
 
-    // Search PDFs for subscribed cases
+    // Search PDFs for subscribed cases, and send ONE message per (user_id, case_id, day)
+    const [dDay, dMonth, dYear] = formattedDate.split("-");
+    const dayISO = `${dYear}-${dMonth}-${dDay}`; // YYYY-MM-DD for notifications.day
+
     for (const row of subscribedCases) {
-      const { case_number, mobile_number, user_id, case_id } = row;
+      const { case_number, mobile_number, country_code, user_id, case_id } = row;
       const normalizedCase = normalizeCaseNumber(case_number);
 
+      // Collect all matching PDFs for this user+case in this run
+      const matchingUrls = new Set();
       for (const [url, pdfText] of Object.entries(extractedPdfs)) {
         const normalizedPdfText = pdfText.replace(/\s+/g, "").replace(/[-/]/g, "").toLowerCase();
         const caseMatch = normalizedCase ? normalizedPdfText.includes(normalizedCase) : false;
+        if (caseMatch) matchingUrls.add(url);
+      }
 
-        if (caseMatch) {
-          try {
-            const identifier = case_number;
-            const message = `You have a new order on ${identifier} dated ${formattedDate}.\nSee ${url} for more details.`;
+      if (matchingUrls.size === 0) continue;
 
-            const { id } = await insertNotifications(identifier, user_id, "whatsapp", mobile_number, message);
-            causeList.push({ user_id, case_id });
-            await processWhatsAppNotificationsWithTemplate(id, "order_status", [identifier, formattedDate, url]);
-            await updateUserCase(case_id, formattedDate);
-          } catch (notifyErr) {
-            console.error(`[error] Failed to notify user ${user_id} for case ${identifier}:`, notifyErr);
-          }
-        }
+      // For now (template not approved for multiple links yet): send only the first matched link.
+      const firstUrl = matchingUrls.values().next().value;
+      const identifier = case_number; // Template "diary number" should receive the CASE number from case_id.
+      const message = `You have a new order on ${identifier} dated ${formattedDate}.\nLink: ${firstUrl}`;
+
+      try {
+        const contact = `${country_code || ""}${mobile_number || ""}`.trim();
+        const { id } = await insertNotifications(
+          case_id,
+          dayISO,
+          user_id,
+          "whatsapp",
+          contact,
+          message
+        );
+        causeList.push({ user_id, case_id });
+        // Template params: [caseNumber, formattedDate, link]
+        await processWhatsAppNotificationsWithTemplate(id, "order_status", [identifier, formattedDate, firstUrl]);
+        await updateUserCase(case_id, formattedDate);
+      } catch (notifyErr) {
+        console.error(`[error] Failed to notify user ${user_id} for case ${identifier}:`, notifyErr);
       }
     }
     return res.status(200).json({ success: true, message: "HC cron job completed successfully" });

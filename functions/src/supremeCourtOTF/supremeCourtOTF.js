@@ -4,42 +4,48 @@ const axios     = require('axios');
 const chromium = require('chrome-aws-lambda');
 const { setCaseTypeAndSetValue, enterDiaryNumber } = require('./components/utils');
 
-
-const openAiKey = functions.config().environment.openai_api_key;
-const KEY = openAiKey
-
-if (!KEY) { console.error('🔴  OPENAI_API_KEY missing'); process.exit(1); }
-
 const wait  = ms => new Promise(r => setTimeout(r, ms));
 
-
 /* ─── arithmetic captcha via OpenAI Vision ─── */
-const solveCaptcha = async (buf) => {
+const solveCaptcha = async (buf, apiKey) => {
+  const key = apiKey;
+  if (!key) throw new Error('OpenAI API key required for captcha');
   const dataURL = 'data:image/png;base64,' + buf.toString('base64');
-  const r = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-4-turbo',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text',
-            text: 'Image shows a simple "+" or "-" arithmetic task; reply ONLY the integer result.' },
-          { type: 'image_url', image_url: { url: dataURL } }
-        ]
-      }],
-      max_tokens: 5
-    },
-    { headers: { Authorization: `Bearer ${KEY}` } }
-  );
-  const ans = r.data.choices[0].message.content.trim();
-  if (!/^-?\d+$/.test(ans)) throw new Error('Non-numeric answer');
-  return ans;
+  try {
+    const r = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text',
+              text: 'Image shows a simple "+" or "-" arithmetic task; reply ONLY the integer result.' },
+            { type: 'image_url', image_url: { url: dataURL } }
+          ]
+        }],
+        max_tokens: 5
+      },
+      { headers: { Authorization: `Bearer ${key}` }, timeout: 30000 }
+    );
+    const ans = r.data.choices[0].message.content.trim();
+    if (!/^-?\d+$/.test(ans)) throw new Error('Non-numeric answer');
+    return ans;
+  } catch (err) {
+    const status = err.response?.status;
+    const body = err.response?.data;
+    console.error('[fetchSupremeCourtOTF] OpenAI captcha API error:', status, body ? JSON.stringify(body) : err.message);
+    if (body?.error?.message) console.error('[fetchSupremeCourtOTF] OpenAI error message:', body.error.message);
+    if (body?.error?.code) console.error('[fetchSupremeCourtOTF] OpenAI error code:', body.error.code);
+    throw err;
+  }
 }
 
 
 /* ─── main routine ─── */
-const fetchSupremeCourtOTF = async (caseType, caseNumber, caseYear, diaryNumber) => {
+const fetchSupremeCourtOTF = async (caseType, caseNumber, caseYear, diaryNumber, openAiKeyParam) => {
+  const openAiKey = openAiKeyParam;
+  if (!openAiKey) throw new Error('OpenAI API key required (pass from caller or set OPENAI_API_KEY env/config)');
   console.log(`[start] [fetchSupremeCourtOTF] Scraping judgments for: Case Type: ${caseType}, Case Number: ${caseNumber}, Year: ${caseYear}`);
 
   const browser = await puppeteer.launch({  args: chromium.args,
@@ -81,7 +87,7 @@ const fetchSupremeCourtOTF = async (caseType, caseNumber, caseYear, diaryNumber)
     // Handle captcha with 3 retries
     let captchaSolved = false;
     
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 5; attempt++) {
       try {
         console.log(`[info] [fetchSupremeCourtOTF] Captcha attempt ${attempt}/3`);
         
@@ -89,7 +95,7 @@ const fetchSupremeCourtOTF = async (caseType, caseNumber, caseYear, diaryNumber)
         const imgURL = await page.evaluate(el => el.src, imgEl);
         const { data } = await axios.get(imgURL, { responseType: 'arraybuffer' });
 
-        const answer = await solveCaptcha(Buffer.from(data));
+        const answer = await solveCaptcha(Buffer.from(data), openAiKey);
         console.log(`[info] [fetchSupremeCourtOTF] Captcha solved (attempt ${attempt}):`, answer);
         
         await page.type('#siwp_captcha_value_0', answer);
@@ -119,23 +125,23 @@ const fetchSupremeCourtOTF = async (caseType, caseNumber, caseYear, diaryNumber)
     }
     
     if (!captchaSolved) {
-      throw new Error('Failed to solve captcha after 3 attempts');
+      throw new Error('Failed to solve captcha after 5 attempts');
     }
+
+         
+    // Wait for results (form already submitted during captcha verification)
+    await wait(6000);
 
      // Check if it's a "no result found" case
     const noResultElement = await page.$('#cnrResults .distTableContent table tbody tr');
-     if (noResultElement) {
+    if (noResultElement) {
        const rowContent = await page.evaluate(el => el.textContent.trim(), noResultElement);
        if (!rowContent || rowContent === '') {
          console.log('[info] [fetchSupremeCourtOTF] No results found for the given case details');
          return [];
        }
-     }
-     
-     console.log('[info] [fetchSupremeCourtOTF] No results found for the given case details');
+    }
 
-    // Wait for results (form already submitted during captcha verification)
-    await wait(6000);
 
     try {
       await page.waitForFunction(

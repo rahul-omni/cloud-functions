@@ -1,10 +1,15 @@
-const functions = require('firebase-functions');
 const { Client } = require('pg');
 
-// Database connection function
-async function connectToDatabase() {
+/**
+ * Connect to PostgreSQL using the given connection string.
+ * @param {string} connectionString - From Secret Manager (production) or process.env.DATABASE_URL / .env (local).
+ */
+async function connectToDatabase(connectionString) {
+  if (!connectionString || !connectionString.trim()) {
+    throw new Error('Database connection string is required (Secret Manager DATABASE_URL or .env DATABASE_URL).');
+  }
   const client = new Client({
-    connectionString: functions.config().environment.database_url,
+    connectionString: connectionString.trim(),
     ssl: {
       rejectUnauthorized: false
     }
@@ -21,8 +26,8 @@ async function connectToDatabase() {
 }
 
 // Insert order into database
-async function insertOrder(dbClient, orderData) {
-
+// sync_site: 0 = date-based sync, 1 = case-specific sync, 2 = error
+async function insertOrder(dbClient, orderData, sync_site = 1) {
   try {
     const benchValue = orderData.Bench || orderData.bench || orderData.requestBench || '';
     if (!benchValue.trim()) {
@@ -40,13 +45,14 @@ async function insertOrder(dbClient, orderData) {
 
     console.log("orderData CaseType:", orderData.case_type);
 
-    if (orderData.case_type && orderData.DiaryNumber) {
+    const diaryNumber = orderData['Diary Number'] || orderData.DiaryNumber || '';
+
+    if (orderData.case_type && diaryNumber) {
       caseType = orderData.case_type;
-      caseNumber = orderData.case_type + '/' + orderData.DiaryNumber;
+      // Keep full diary (e.g. 753/2024) in case_number too
+      caseNumber = `${orderData.case_type}/${diaryNumber}`;
     }
     console.log("caseType:", caseType);
-
-    const diaryNumber = orderData['Diary Number'] || '';
     
     // Prepare judgment URL array
     const judgmentUrl = orderData.judgment_url || null;
@@ -82,10 +88,11 @@ async function insertOrder(dbClient, orderData) {
         case_type,
         city,
         district,
-        judgment_type
+        judgment_type,
+        site_sync
       ) VALUES (
         gen_random_uuid(),
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
       )
       RETURNING id;
     `;
@@ -99,10 +106,10 @@ async function insertOrder(dbClient, orderData) {
 
     const result = await dbClient.query(insertQuery, [
       orderData.SerialNumber || '',                    // serial_number
-      diaryNumber,                                      // diary_number
-      caseNumber,                                       // case_number
-      parties,                                             // parties (not available from scraping)
-      null,                                             // advocates (not available from scraping)
+      diaryNumber,                                     // diary_number
+      caseNumber,                                      // case_number
+      parties,                                         // parties (not available from scraping)
+      null,                                            // advocates (not available from scraping)
       benchValue,                                      // bench (hardcoded based on scraper)
       null,                                            // judgment_by (not available from scraping)
       judgmentDate,                                    // judgment_date
@@ -114,9 +121,10 @@ async function insertOrder(dbClient, orderData) {
       filePath,                                        // file_path
       judgmentText,                                    // judgment_text (array)
       caseType,                                        // case_type
-      cityValue,                                         // city (hardcoded based on scraper)
+      cityValue,                                       // city (hardcoded based on scraper)
       '',                                              // district (hardcoded based on scraper)
-      judgmentType                                     // judgment_type (single text field)
+      judgmentType,                                    // judgment_type (single text field)
+      sync_site                                        // site_sync
     ]);
     
     return result.rows[0].id;
@@ -158,6 +166,52 @@ async function updateJudgmentUrl(dbClient, id, newJudgmentUrl, sync_site) {
   }
 }
 
+async function updateCaseNumber(dbClient, id, caseNumber) {
+  if (!dbClient || !id || !caseNumber) return null;
+  try {
+    const updateQuery = `
+      UPDATE case_details
+      SET case_number = $1, updated_at = $2
+      WHERE id = $3
+      RETURNING id, case_number;
+    `;
+    const result = await dbClient.query(updateQuery, [
+      caseNumber,
+      new Date().toISOString(),
+      id,
+    ]);
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error(`❌ Failed to update case_number for id ${id}:`, error.message);
+    return null;
+  }
+}
+
+/** Update only site_sync for a case (e.g. when no PDF to add but we processed it). */
+async function updateSiteSync(dbClient, id, sync_site) {
+  if (!dbClient || !id) return null;
+  try {
+    const updateQuery = `
+      UPDATE case_details
+      SET updated_at = $1, site_sync = $2
+      WHERE id = $3
+      RETURNING id;
+    `;
+    const result = await dbClient.query(updateQuery, [
+      new Date().toISOString(),
+      sync_site,
+      id,
+    ]);
+    if (result.rowCount > 0) {
+      console.log(`✅ site_sync updated for id: ${id} -> ${sync_site}`);
+    }
+    return result.rows[0];
+  } catch (error) {
+    console.error(`❌ Failed to update site_sync for id ${id}:`, error.message);
+    return null;
+  }
+}
+
 async function bulkInsertOrders(client, ordersData, batchSize = 100) {
   const filteredOrders = ordersData.filter(order =>
     (order.Bench || order.bench || order.requestBench || '').trim() !== ''
@@ -196,9 +250,10 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
         let judgmentDate = orderData.JudgetmentDate || null;
         let caseNumber = null;
         let caseType = null;
-        if (orderData.case_type) {
+        const diaryNumber = orderData['Diary Number'] || orderData.DiaryNumber || '';
+        if (orderData.case_type && diaryNumber) {
           caseType = orderData.case_type;
-          caseNumber = orderData.case_type + '/' + orderData.DiaryNumber;
+          caseNumber = `${orderData.case_type}/${diaryNumber}`;
         }
         const judgmentUrl = orderData.Order?.href ? [orderData.Order.href] : null;
         const judgmentText = null;
@@ -210,7 +265,7 @@ async function bulkInsertOrders(client, ordersData, batchSize = 100) {
 
         values.push(
           orderData.SerialNumber || '',
-          orderData.DiaryNumber || '',
+          diaryNumber,
           caseNumber,
           null,
           null,
@@ -378,6 +433,8 @@ module.exports = {
   insertOrder,
   bulkInsertOrders,
   updateJudgmentUrl,
+  updateCaseNumber,
+  updateSiteSync,
   getCaseDetails,
   getHighCourtUserCases
 }; 

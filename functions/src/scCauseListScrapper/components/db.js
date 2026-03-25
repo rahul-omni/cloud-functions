@@ -124,28 +124,29 @@ const insertCauselist = async (results) => {
   return { inserted, skipped, errors };
 }
 
+/**
+ * Subscribed SC cases for cause-list matching.
+ * Do NOT filter or bump `last_synced` here: other sync jobs (e.g. case upsert) set `last_synced`
+ * the same day and would exclude rows from cause-list forever for that calendar day.
+ * Duplicate sends for the same listing day are prevented by notifications ON CONFLICT (user_id, case_id, day, method).
+ */
 const getSubscribedCases = async () => {
   const sql = `
-      WITH rows_to_update AS (
-          SELECT cd.id, u.id AS user_id
-          FROM subscribed_cases sc
-          JOIN users u ON sc.user_id = u.id
-          JOIN case_details cd ON sc.case_id = cd.id
-          WHERE (cd.last_synced IS NULL OR cd.last_synced::date <> CURRENT_DATE)
-            AND cd.court = 'Supreme Court'
-          LIMIT 100
-      )
-      UPDATE case_details cd
-      SET last_synced = NOW()
-      FROM rows_to_update r
-      WHERE cd.id = r.id
-      RETURNING
-          r.user_id,
+      SELECT
+          sc.user_id,
           cd.case_number,
           cd.id AS case_id,
           cd.diary_number,
-          (SELECT mobile_number FROM users WHERE id = r.user_id) AS mobile_number,
-          cd.last_synced;`;
+          u.mobile_number,
+          u.country_code,
+          cd.last_synced
+      FROM subscribed_cases sc
+      JOIN users u ON sc.user_id = u.id
+      JOIN case_details cd ON sc.case_id = cd.id
+      WHERE cd.court = 'Supreme Court'
+        AND sc.status = 'ACTIVE'
+      ORDER BY cd.updated_at DESC NULLS LAST
+      LIMIT 500`;
 
   const { rows } = await db.query(sql);
   return rows;
@@ -166,11 +167,13 @@ const updateUserCase = async (id, dateString) => {
   return rows[0];
 };
 
-const insertNotifications = async (diary_number, user_id, method, contact, message) => {
+// Option B: one notification per (user_id, case_id, day, method)
+const insertNotifications = async (case_id, day, user_id, method, contact, message) => {
   const sql = `
     INSERT INTO notifications (
       id,
-      dairy_number,
+      case_id,
+      day,
       user_id,
       method,
       contact,
@@ -179,25 +182,25 @@ const insertNotifications = async (diary_number, user_id, method, contact, messa
       created_at
     ) VALUES (
       gen_random_uuid(),
-      $1,
-      $2,
-      $3,
-      $4,
-      $5,
-      $6,
+      $1,  -- case_id
+      $2,  -- day (YYYY-MM-DD)
+      $3,  -- user_id
+      $4,  -- method
+      $5,  -- contact
+      $6,  -- message
+      $7,  -- status
       CURRENT_TIMESTAMP
     )
+    ON CONFLICT (user_id, case_id, day, method)
+    DO UPDATE SET
+      contact = EXCLUDED.contact,
+      message = EXCLUDED.message,
+      status = 'pending',
+      created_at = CURRENT_TIMESTAMP
     RETURNING id, method;
   `;
 
-  const values = [
-    diary_number,
-    user_id,
-    method,
-    contact,
-    message,
-    'pending'
-  ];
+  const values = [case_id, day, user_id, method, contact, message, "pending"];
 
   const result = await db.query(sql, values);
   return result.rows[0];

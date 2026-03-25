@@ -1,10 +1,5 @@
 const OpenAI = require('openai');
-const functions = require('firebase-functions');
-
-// Initialize OpenAI with API key from Firebase Functions config
-const openai = new OpenAI({
-    apiKey: functions.config().environment?.openai_pdf_parser_key || process.env.OPENAI_API_KEY
-});
+const { getOpenAiKeyFromSecretManager } = require('../config/getOpenAiKeyFromSecretManager');
 
 /**
  * Estimate token count (rough approximation: 1 token ≈ 4 characters)
@@ -21,7 +16,7 @@ function estimateTokenCount(text) {
  * @param {number} maxChunkSize - Maximum chunk size in characters
  * @returns {Array} Array of text chunks
  */
-function splitTextIntoChunks(text, maxChunkSize = 30000) { // ~8k tokens per chunk for much faster processing
+function splitTextIntoChunks(text, maxChunkSize = 18000) {
     const lines = text.split('\n');
     const chunks = [];
     let currentChunk = '';
@@ -43,6 +38,87 @@ function splitTextIntoChunks(text, maxChunkSize = 30000) { // ~8k tokens per chu
 }
 
 /**
+ * Build extraction prompt — ONLY S.No + Case No. column (no parties, no IA lines).
+ * @param {string} pdfText
+ */
+function buildCauseListExtractionPrompt(pdfText) {
+    return `You extract ONLY the **Cause List table** rows from Supreme Court Daily / Supplementary Cause List PDF text.
+
+CRITICAL: Respond with ONLY valid JSON. No markdown fences, no commentary.
+
+WHAT TO EXTRACT (first two logical columns only):
+- serialNumber: The list serial / S.No. (digits, or as printed before the case-type token). Examples: "1", "17", "301" — if the PDF glues serial to the case line like "17W.P.(C)", still put "17" in serialNumber and the full case line fragment in caseNumber as needed.
+- caseNumber: The **full case identifier** exactly as in the PDF: e.g. "Diary No. 47853-2024", "T.P.(C) No. 1711/2024", "T.P.(Crl.) No. 719/2023", "SLP(Crl) No. 146/2025", "W.P.(C) No. 1252/2023", "C.A. No. 4585/2022", "IA No. ..." is NOT a main case row — do NOT use IA-only lines as caseNumber.
+
+STRICTLY OMIT:
+- "Connected" matters and decimal serials (e.g. "12.1", "13.2 Connected")
+- Petitioner / Respondent / party names, "Versus", advocate names
+- Any line that is ONLY "IA No. ..." (applications) — not a listed main case row
+- Headers, footers, "NEW DELHI", page stamps
+
+COURT GROUPING (in order of appearance):
+- "CHIEF JUSTICE'S COURT" → courtNumber "1", courtName "CHIEF JUSTICE'S COURT"
+- "COURT NO. : N" or "COURT NO. N" → courtNumber "N", courtName "COURT NO. N"
+- "SUPPLEMENTARY LIST" is a label; assign following cases to the **next** court header that appears (same rules).
+
+Extract cases from ALL sections (MISCELLANEOUS HEARING, BAIL MATTERS, FRESH, AFTER NOTICE, etc.). Do not stop after one court.
+
+DATE: Use "DAILY CAUSE LIST FOR DATED : DD-MM-YYYY" from the text if present; else "".
+
+Return ONLY this JSON shape:
+{
+  "court": "SUPREME COURT OF INDIA",
+  "date": "DD-MM-YYYY or empty string",
+  "courts": [
+    {
+      "courtNumber": "1",
+      "courtName": "CHIEF JUSTICE'S COURT",
+      "cases": [ { "serialNumber": "1", "caseNumber": "T.P.(Crl.) No. 719/2023" } ]
+    }
+  ]
+}
+
+PDF TEXT:
+${pdfText}`;
+}
+
+/**
+ * Single LLM pass for one chunk — never recurses into chunking (used by parseWithChunking).
+ */
+async function parseChunkOnly(pdfText, openai) {
+    const prompt = buildCauseListExtractionPrompt(pdfText);
+    let response;
+    try {
+        response = await openai.chat.completions.create({
+            model: "gpt-4.1-mini",
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "You extract cause-list rows as JSON only. No markdown. No parties or IA-only lines. serialNumber + caseNumber per non-connected matter.",
+                },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.05,
+            max_tokens: 16384,
+        });
+    } catch (e) {
+        console.error("[error] [parseChunkOnly] gpt-4.1-mini failed:", e.message);
+        response = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+                { role: "system", content: "Return ONLY valid JSON. No other text." },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.05,
+            max_tokens: 4096,
+        });
+    }
+    const parsedContent = response.choices?.[0]?.message?.content;
+    return parseOpenAIResponse(parsedContent);
+}
+
+/**
  * Parse PDF text using OpenAI to extract structured case data
  * @param {string} pdfText - Raw text extracted from PDF
  * @returns {Object} Parsed cause list data
@@ -50,133 +126,90 @@ function splitTextIntoChunks(text, maxChunkSize = 30000) { // ~8k tokens per chu
 async function parseCauseListWithOpenAI(pdfText) {
     try {
         console.log('[debug] [parseCauseListWithOpenAI] Starting OpenAI parsing...');
-        
+        const apiKey = await getOpenAiKeyFromSecretManager(undefined, undefined, 'openaiPdfParser');
+        if (!apiKey) throw new Error('OpenAI API key not available from Secret Manager');
+        const openai = new OpenAI({ apiKey });
+
         const estimatedTokens = estimateTokenCount(pdfText);
         console.log(`[debug] [parseCauseListWithOpenAI] Estimated tokens: ${estimatedTokens}`);
         
-        // If text is too large, use chunking strategy
-        if (estimatedTokens > 100000) { // 100k tokens threshold
-            console.log('[debug] [parseCauseListWithOpenAI] Text too large, using chunking strategy');
-            return await parseWithChunking(pdfText);
+        // Large PDFs: chunk so JSON output is not truncated and courts are not missed
+        if (estimatedTokens > 35000) {
+            console.log("[debug] [parseCauseListWithOpenAI] Text large, using chunking strategy");
+            return await parseWithChunking(pdfText, openai);
         }
         
         // Use single request for smaller texts
-        return await parseSingleRequest(pdfText);
+        return await parseSingleRequest(pdfText, openai);
         
     } catch (error) {
-        console.error('[error] [parseCauseListWithOpenAI] OpenAI parsing failed:', error);
-        throw error;
+        console.error('[error] [parseCauseListWithOpenAI] OpenAI parsing failed:', error?.message || error);
+        // Return a safe object so callers/cache never store parsed: null solely due to API/parse throws.
+        // Subscription matching still uses rawText via flattenParsedCauseListForMatching.
+        return {
+            court: 'SUPREME COURT OF INDIA',
+            date: '',
+            courts: [],
+        };
     }
 }
 
 /**
  * Parse with single OpenAI request
  * @param {string} pdfText - PDF text to parse
+ * @param {OpenAI} openai - OpenAI client instance
  * @returns {Object} Parsed data
  */
-async function parseSingleRequest(pdfText) {
-    const prompt = `You are an expert at parsing Supreme Court cause list PDFs. Parse the following text and extract structured case data.
-
-CRITICAL: You must respond with ONLY valid JSON. No explanations, no markdown formatting, no additional text.
-
-IMPORTANT RULES:
-1. Extract ALL cases with their serial numbers (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, etc.) - DO NOT MISS ANY CASES
-2. Do NOT include connected cases (cases that say "Connected" or have decimal numbers like "1.1", "2.1")
-3. Extract case numbers exactly as they appear (Diary No., SLP, MA, WP, W.P., CONMT.PET., ARBIT.PETITON, etc.)
-4. Group cases by court (Chief Justice's Court, Court No. 1, Court No. 2, etc.)
-5. Extract court date and other header information
-6. Do NOT extract petitioner, respondent, advocate, or application information
-7. ONLY extract serialNumber and caseNumber - NO applications field
-8. Look for cases in ALL sections: FRESH, AFTER NOTICE, BAIL MATTERS, AD INTERIM STAY MATTERS, etc.
-9. Count carefully - there should be many more than 11 cases in a typical cause list
-10. CRITICAL: Identify courts consistently using these patterns:
-    - "CHIEF JUSTICE'S COURT" → courtNumber: "1", courtName: "CHIEF JUSTICE'S COURT"
-    - "COURT NO. : 2" → courtNumber: "2", courtName: "COURT NO. 2"
-    - "COURT NO. : 3" → courtNumber: "3", courtName: "COURT NO. 3"
-    - "COURT NO. : 4" → courtNumber: "4", courtName: "COURT NO. 4"
-    - etc.
-
-MOST CRITICAL: This is a MAIN CAUSE LIST that contains 15-20 courts. You MUST extract ALL courts, not just the first one. Look for:
-- CHIEF JUSTICE'S COURT
-- COURT NO. : 2, COURT NO. : 3, COURT NO. : 4, COURT NO. : 5, COURT NO. : 6, COURT NO. : 7, COURT NO. : 8, COURT NO. : 9, COURT NO. : 10, COURT NO. : 11, COURT NO. : 12, COURT NO. : 13, COURT NO. : 14, COURT NO. : 15, COURT NO. : 16, COURT NO. : 17, COURT NO. : 18
-- Do NOT stop after extracting just one court - continue until you find ALL courts in the document
-
-Return ONLY this exact JSON structure (no other text):
-{
-  "court": "SUPREME COURT OF INDIA",
-  "date": "Date in DD-MM-YYYY format",
-  "courts": [
-    {
-      "courtNumber": "1",
-      "courtName": "CHIEF JUSTICE'S COURT",
-      "cases": [
-        {
-          "serialNumber": "Serial number as string",
-          "caseNumber": "Complete case number"
-        }
-      ]
-    },
-    {
-      "courtNumber": "2", 
-      "courtName": "COURT NO. 2",
-      "cases": [
-        {
-          "serialNumber": "Serial number as string",
-          "caseNumber": "Complete case number"
-        }
-      ]
-    }
-  ]
-}
-
-PDF TEXT TO PARSE:
-${pdfText}`;
+async function parseSingleRequest(pdfText, openai) {
+    const prompt = buildCauseListExtractionPrompt(pdfText);
 
     let response;
     try {
         response = await openai.chat.completions.create({
-            model: "gpt-4.1-mini", // Use mini for higher token limit (128k vs 30k)
+            model: "gpt-4.1-mini",
             messages: [
                 {
                     role: "system",
-                    content: "You are an expert at parsing legal documents and extracting structured data. You must respond with ONLY valid JSON. No explanations, no markdown, no additional text. The JSON must be complete and properly formatted."
+                    content:
+                        "You extract cause-list rows as JSON only. No markdown. Only serialNumber and caseNumber per non-connected matter. No parties.",
                 },
                 {
                     role: "user",
-                    content: prompt
-                }
+                    content: prompt,
+                },
             ],
-            temperature: 0.1,
-            max_tokens: 8000 // Reduced to 8000 for faster processing, will use chunking for large docs
+            temperature: 0.05,
+            max_tokens: 16384,
         });
     } catch (error) {
-        console.error('[error] [parseSingleRequest] GPT-4o-mini failed, trying gpt-3.5-turbo:', error.message);
-        
-        // Fallback to gpt-3.5-turbo if gpt-4o-mini fails
+        console.error("[error] [parseSingleRequest] gpt-4.1-mini failed, trying gpt-3.5-turbo:", error.message);
+
         response = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [
                 {
                     role: "system",
-                    content: "You are an expert at parsing legal documents and extracting structured data. You must respond with ONLY valid JSON. No explanations, no markdown, no additional text. The JSON must be complete and properly formatted."
+                    content:
+                        "You extract cause-list rows as JSON only. No markdown. Only serialNumber and caseNumber.",
                 },
                 {
                     role: "user",
-                    content: prompt
-                }
+                    content: prompt,
+                },
             ],
-            temperature: 0.1,
-            max_tokens: 6000 // Reduced to 6000 for faster processing, will use chunking for large docs
+            temperature: 0.05,
+            max_tokens: 4096,
         });
     }
 
-    const parsedContent = response.choices[0].message.content;
-    console.log('[debug] [parseSingleRequest] OpenAI response received');
-    console.log('[debug] [parseSingleRequest] Response length:', parsedContent.length);
-    console.log('[debug] [parseSingleRequest] Response preview:', parsedContent.substring(0, 500));
-    console.log('[debug] [parseSingleRequest] Response ending:', parsedContent.substring(Math.max(0, parsedContent.length - 500)));
-    console.log('[debug] [parseSingleRequest] Full response length:', parsedContent.length);
-    console.log('[debug] [parseSingleRequest] Full response:', parsedContent);
+    const parsedContent = response.choices?.[0]?.message?.content;
+    console.log(
+        '[debug] [parseSingleRequest] OpenAI response length:',
+        parsedContent != null ? parsedContent.length : 0
+    );
+    if (parsedContent) {
+        console.log('[debug] [parseSingleRequest] Response preview:', parsedContent.substring(0, 800));
+    }
     
     let result = parseOpenAIResponse(parsedContent);
     
@@ -187,102 +220,52 @@ ${pdfText}`;
         console.log(`[debug] [parseSingleRequest] First attempt only found ${result.courts.length} courts, trying simplified prompt for more courts`);
     }
     
-    // If we have less than 5 courts, try the simplified prompt
+    // If we have less than 5 courts, retry once with truncated text (model context limits)
     if (!result || !result.courts || result.courts.length < 5) {
-        
-        const simplifiedPrompt = `Extract case data from this Supreme Court cause list. Return ONLY valid JSON in this exact format:
-
-{
-  "court": "SUPREME COURT OF INDIA",
-  "date": "04-09-2025",
-  "courts": [
-    {
-      "courtNumber": "1",
-      "courtName": "CHIEF JUSTICE'S COURT",
-      "cases": [
-        {
-          "serialNumber": "1",
-          "caseNumber": "Diary No. 11981-2025"
-        }
-      ]
-    },
-    {
-      "courtNumber": "2",
-      "courtName": "COURT NO. 2",
-      "cases": [
-        {
-          "serialNumber": "26",
-          "caseNumber": "SLP(C) No. 24823/2025"
-        }
-      ]
-    },
-    {
-      "courtNumber": "3",
-      "courtName": "COURT NO. 3",
-      "cases": [
-        {
-          "serialNumber": "48",
-          "caseNumber": "Diary No. 18533-2025"
-        }
-      ]
-    }
-  ]
-}
-
-CRITICAL REQUIREMENTS:
-- This is a MAIN CAUSE LIST that should have 15-20 courts
-- Look for ALL courts: COURT NO. : 1, COURT NO. : 2, COURT NO. : 3, COURT NO. : 4, etc.
-- Extract ALL cases from EACH court
-- Only extract serialNumber and caseNumber
-- Identify courts consistently: "CHIEF JUSTICE'S COURT" = courtNumber "1", "COURT NO. : 2" = courtNumber "2", etc.
-- The response must include ALL courts found in the document
-
-Text: ${pdfText.substring(0, 50000)}`; // Limit text size for retry
-        
+        const simplifiedPrompt = buildCauseListExtractionPrompt(pdfText.substring(0, 120000));
         try {
             const retryResponse = await openai.chat.completions.create({
                 model: "gpt-3.5-turbo",
                 messages: [
                     {
                         role: "system",
-                        content: "Return ONLY valid JSON. No other text."
+                        content: "Return ONLY valid JSON. No other text.",
                     },
                     {
                         role: "user",
-                        content: simplifiedPrompt
-                    }
+                        content: simplifiedPrompt,
+                    },
                 ],
-                temperature: 0.1,
-                max_tokens: 6000 // Reduced to 6000 for faster processing, will use chunking for large docs
+                temperature: 0.05,
+                max_tokens: 4096,
             });
-            
-            console.log('[debug] [parseSingleRequest] Retry response received');
-            const retryContent = retryResponse.choices[0].message.content;
-            console.log('[debug] [parseSingleRequest] Retry response length:', retryContent.length);
-            console.log('[debug] [parseSingleRequest] Retry response preview:', retryContent.substring(0, 500));
-            console.log('[debug] [parseSingleRequest] Retry response ending:', retryContent.substring(Math.max(0, retryContent.length - 500)));
-            console.log('[debug] [parseSingleRequest] Full retry response:', retryContent);
+
+            const retryContent = retryResponse.choices?.[0]?.message?.content;
+            console.log("[debug] [parseSingleRequest] Retry response length:", retryContent.length);
             result = parseOpenAIResponse(retryContent);
         } catch (retryError) {
-            console.error('[error] [parseSingleRequest] Retry also failed:', retryError.message);
+            console.error("[error] [parseSingleRequest] Retry also failed:", retryError.message);
         }
     }
-    
+
     // If still not enough courts, try chunking approach for large documents
     if (result && result.courts && result.courts.length < 5) {
-        console.log(`[debug] [parseSingleRequest] Still only ${result.courts.length} courts, trying chunking approach`);
-        const estimatedTokens = estimateTokenCount(pdfText);
-        if (estimatedTokens > 50000) { // Use chunking for large documents
-            console.log('[debug] [parseSingleRequest] Document is large enough for chunking, switching to chunked approach');
-            return await parseWithChunking(pdfText);
+        console.log(
+            `[debug] [parseSingleRequest] Still only ${result.courts.length} courts, trying chunking approach`
+        );
+        const est = estimateTokenCount(pdfText);
+        if (est > 25000) {
+            console.log(`[debug] [parseSingleRequest] Document is large enough for chunking, switching to chunked approach`);
+            return await parseWithChunking(pdfText, openai);
         }
     }
-    
-    // For Main Cause Lists with high token count, use chunking immediately to avoid timeout
+
     const estimatedTokens = estimateTokenCount(pdfText);
-    if (estimatedTokens > 60000) { // Large documents - use chunking immediately to prevent timeout
-        console.log(`[debug] [parseSingleRequest] Document is large (${estimatedTokens} tokens), using chunking to avoid timeout`);
-        return await parseWithChunking(pdfText);
+    if (estimatedTokens > 35000) {
+        console.log(
+            `[debug] [parseSingleRequest] Document is large (${estimatedTokens} est. tokens), using chunking`
+        );
+        return await parseWithChunking(pdfText, openai);
     }
     
     return result;
@@ -291,9 +274,10 @@ Text: ${pdfText.substring(0, 50000)}`; // Limit text size for retry
 /**
  * Parse with chunking strategy for very large PDFs
  * @param {string} pdfText - PDF text to parse
+ * @param {OpenAI} openai - OpenAI client instance
  * @returns {Object} Parsed data
  */
-async function parseWithChunking(pdfText) {
+async function parseWithChunking(pdfText, openai) {
     console.log('[debug] [parseWithChunking] Starting chunked parsing...');
     
     const chunks = splitTextIntoChunks(pdfText);
@@ -310,19 +294,26 @@ async function parseWithChunking(pdfText) {
         console.log(`[debug] [parseWithChunking] Chunk ${i + 1} preview: ${chunk.substring(0, 200)}...`);
         
         try {
-            const chunkResult = await parseSingleRequest(chunk);
+            const chunkResult = await parseChunkOnly(chunk, openai);
             
             console.log(`[debug] [parseWithChunking] Chunk ${i + 1} result:`, {
                 court: chunkResult.court,
                 date: chunkResult.date,
                 courtsCount: chunkResult.courts ? chunkResult.courts.length : 0,
-                totalCases: chunkResult.courts ? chunkResult.courts.reduce((total, court) => total + court.cases.length, 0) : 0
+                totalCases: chunkResult.courts
+                    ? chunkResult.courts.reduce(
+                          (total, court) => total + (court.cases?.length || 0),
+                          0
+                      )
+                    : 0
             });
             
             // Log courts found in this chunk
             if (chunkResult.courts && Array.isArray(chunkResult.courts)) {
                 chunkResult.courts.forEach((court, courtIndex) => {
-                    console.log(`[debug] [parseWithChunking] Chunk ${i + 1} Court ${courtIndex + 1}: ${court.courtName} (${court.courtNumber}) - ${court.cases.length} cases`);
+                    console.log(
+                        `[debug] [parseWithChunking] Chunk ${i + 1} Court ${courtIndex + 1}: ${court.courtName} (${court.courtNumber}) - ${court.cases?.length || 0} cases`
+                    );
                 });
             }
             
@@ -414,17 +405,33 @@ function mergeCourts(courts) {
         console.log(`[debug] [mergeCourts] Using key: "${key}" for court:`, court.courtName);
         
         if (courtMap.has(key)) {
-            // Merge cases
+            // Merge cases (dedupe by serial + case number)
             const existingCourt = courtMap.get(key);
-            console.log(`[debug] [mergeCourts] Merging ${court.cases.length} cases into existing court with ${existingCourt.cases.length} cases`);
-            existingCourt.cases.push(...court.cases);
+            const seen = new Set(
+                (existingCourt.cases || []).map(
+                    (c) => `${String(c.serialNumber || "").trim()}|${String(c.caseNumber || "").trim()}`
+                )
+            );
+            for (const c of court.cases || []) {
+                const k = `${String(c.serialNumber || "").trim()}|${String(c.caseNumber || "").trim()}`;
+                if (!seen.has(k)) {
+                    seen.add(k);
+                    existingCourt.cases.push(c);
+                }
+            }
+            console.log(
+                `[debug] [mergeCourts] Merged into court ${key}, total cases: ${existingCourt.cases.length}`
+            );
         } else {
             console.log(`[debug] [mergeCourts] Adding new court with key: "${key}"`);
             courtMap.set(key, { ...court });
         }
     });
     
-    const mergedCourts = Array.from(courtMap.values());
+    const mergedCourts = Array.from(courtMap.values()).map((c) => ({
+        ...c,
+        cases: Array.isArray(c.cases) ? c.cases : [],
+    }));
     console.log(`[debug] [mergeCourts] Merge complete: ${mergedCourts.length} unique courts`);
     
     // Log summary of merged courts
@@ -441,6 +448,18 @@ function mergeCourts(courts) {
  * @returns {Object} Parsed data
  */
 function parseOpenAIResponse(parsedContent) {
+    if (parsedContent == null || typeof parsedContent !== 'string') {
+        console.error(
+            '[error] [parseOpenAIResponse] Empty or non-string model content:',
+            parsedContent === null ? 'null' : typeof parsedContent
+        );
+        return {
+            court: 'SUPREME COURT OF INDIA',
+            date: '',
+            courts: [],
+        };
+    }
+
     console.log('[debug] [parseOpenAIResponse] Raw OpenAI response length:', parsedContent.length);
     console.log('[debug] [parseOpenAIResponse] First 500 chars:', parsedContent.substring(0, 500));
     console.log('[debug] [parseOpenAIResponse] Last 500 chars:', parsedContent.substring(Math.max(0, parsedContent.length - 500)));
@@ -595,9 +614,22 @@ function parseOpenAIResponse(parsedContent) {
             };
             console.log('[debug] [parseOpenAIResponse] Fixed structure created');
         } else {
-            throw new Error('Invalid data structure from OpenAI');
+            console.error(
+                '[error] [parseOpenAIResponse] Invalid structure — using empty courts (no throw)'
+            );
+            parsedData = {
+                court: parsedData.court || 'SUPREME COURT OF INDIA',
+                date: parsedData.date || '',
+                courts: [],
+            };
         }
     }
+
+    // Ensure every court has a cases array (model sometimes omits it → was throwing here)
+    parsedData.courts = (parsedData.courts || []).map((court) => ({
+        ...court,
+        cases: Array.isArray(court.cases) ? court.cases : [],
+    }));
 
     // Post-process to remove applications and ensure only serialNumber and caseNumber
     parsedData.courts.forEach(court => {
@@ -640,6 +672,26 @@ function parseOpenAIResponse(parsedContent) {
     return parsedData;
 }
 
+/**
+ * Build a single searchable string for subscription matching: raw PDF text plus
+ * every extracted case line from structured parse (helps when raw text is noisy).
+ */
+function flattenParsedCauseListForMatching(rawText, parsed) {
+    let t = rawText || "";
+    if (parsed && Array.isArray(parsed.courts)) {
+        for (const ct of parsed.courts) {
+            for (const row of ct.cases || []) {
+                if (row.caseNumber) t += "\n" + row.caseNumber;
+                if (row.serialNumber !== undefined && row.serialNumber !== null) {
+                    t += "\n" + String(row.serialNumber);
+                }
+            }
+        }
+    }
+    return t;
+}
+
 module.exports = {
-    parseCauseListWithOpenAI
+    parseCauseListWithOpenAI,
+    flattenParsedCauseListForMatching,
 };

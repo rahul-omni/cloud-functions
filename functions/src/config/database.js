@@ -1,24 +1,40 @@
 const { Pool } = require('pg');
-const functions = require('firebase-functions');
-const DATABASE_URL = "postgresql://postgres:-Zn%2Fam2h94_Nhj%60l@34.93.200.175:5432/postgres";
+// DATABASE_URL from Secret Manager V2 only (bootstrap credential). No env, no config, no legacy Secret Manager.
+const { getDatabaseUrlFromSecretManager } = require('./getOpenAiKeyFromSecretManager');
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // Required for some hosting platforms
-  }
-});
+let poolPromise = null;
 
-// Test the connection
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Database connection failed:', err);
-  } else {
-    console.log('Database connected successfully');
+async function getPool() {
+  if (!poolPromise) {
+    poolPromise = (async () => {
+      const connectionString = await getDatabaseUrlFromSecretManager(
+        undefined,
+        'DATABASE_URL',
+        'tentativeDateSC-database'
+      );
+
+      const pool = new Pool({
+        connectionString: connectionString.trim(),
+        ssl: {
+          rejectUnauthorized: false
+        }
+      });
+
+      // Test the connection once on first creation
+      pool.query('SELECT NOW()')
+        .then(() => console.log('Database connected successfully'))
+        .catch(err => console.error('Database connection failed:', err));
+
+      return pool;
+    })();
   }
-});
+  return poolPromise;
+}
 
 module.exports = {
-  query: (text, params) => pool.query(text, params),
-  pool
-}; 
+  query: async (text, params) => {
+    const pool = await getPool();
+    return pool.query(text, params);
+  },
+  getPool,
+};

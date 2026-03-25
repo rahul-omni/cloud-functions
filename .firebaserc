@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "booming-order-465208-t8"
-  }
+    "default": "booming-order-465208-t8",
+    "new-prod": "robotic-land-465306-j7"
+  },
+  "targets": {},
+  "etags": {}
 }

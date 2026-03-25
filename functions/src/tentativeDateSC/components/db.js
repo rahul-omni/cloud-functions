@@ -147,8 +147,14 @@ const getSubscribedCases = async () => {
 };
 
 const updateUserCase = async (id, dateString) => {
-  // Convert DD-MM-YYYY → YYYY-MM-DD
-  const [day, month, year] = dateString.split('-');
+  // Only accept DD-MM-YYYY (reject status text like "Delay Condoned and matter dismissed...")
+  const isDate = /^\d{2}-\d{2}-\d{4}$/.test((dateString || '').trim());
+  if (!isDate) {
+    console.log(`[tentativeDateSC] Skipping tentative_date update for ${id} – not a valid date (DD-MM-YYYY): ${(dateString || '').substring(0, 60)}`);
+    return null;
+  }
+
+  const [day, month, year] = dateString.trim().split('-');
   const formattedDate = `${year}-${month}-${day}`;
 
   const sql = `

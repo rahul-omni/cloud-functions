@@ -33,8 +33,26 @@ const accessWhatsappSecretVersion = async (projectId, secretName) => {
   }
 };
 
+/**
+ * Access a secret as plain text (e.g. API keys). Uses latest version.
+ * @param {string} projectId - GCP project ID
+ * @param {string} secretName - Secret name in Secret Manager
+ * @param {string} [version='latest'] - Version (default 'latest')
+ * @returns {Promise<string>} Secret value as string
+ */
+const accessPlainTextSecret = async (projectId, secretName, version = 'latest') => {
+  try {
+    const name = `projects/${projectId}/secrets/${secretName}/versions/${version}`;
+    const [v] = await client.accessSecretVersion({ name });
+    return v.payload.data.toString().trim();
+  } catch (error) {
+    console.error('Error accessing plain text secret:', error);
+    throw error;
+  }
+};
 
 module.exports = {
   accessSecretVersion,
   accessWhatsappSecretVersion,
+  accessPlainTextSecret,
 }; 

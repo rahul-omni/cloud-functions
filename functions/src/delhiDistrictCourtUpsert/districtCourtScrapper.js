@@ -4,9 +4,10 @@ const { scrapeData } = require('./components/scraper');
 const { transformToDatabaseSchema } = require('./components/utils');
 
 // Database connection handler
-const handleDatabaseConnection = async () => {
+const handleDatabaseConnection = async (connectionString) => {
+  if (!connectionString) return null;
   try {
-    const dbClient = await connectToDatabase();
+    const dbClient = await connectToDatabase(connectionString);
     console.log('✅  Connected to database');
     return dbClient;
   } catch (dbError) {
@@ -34,7 +35,7 @@ const extractCaseData = (caseItem, courtInfo) => {
 };
 
 // Main district court scraper function
-const EastDelhiDistrictCourtScrapper = async (date, diaryNumber, courtName, caseTypeValue, courtComplex , caseId) => {
+const EastDelhiDistrictCourtScrapper = async (date, diaryNumber, courtName, caseTypeValue, courtComplex , caseId, connectionString = null) => {
   console.log(`[start] [EastDelhiDistrictCourtScrapper] Scraping district court judgments`);
   console.log(`[info] [EastDelhiDistrictCourtScrapper] Parameters:`, {
    
@@ -51,7 +52,7 @@ const EastDelhiDistrictCourtScrapper = async (date, diaryNumber, courtName, case
 
   try {
     // Connect to database
-    dbClient = await handleDatabaseConnection();
+    dbClient = await handleDatabaseConnection(connectionString);
 
     // Validate court name is provided
     if (!courtName) {

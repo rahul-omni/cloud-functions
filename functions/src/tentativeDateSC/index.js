@@ -110,25 +110,28 @@ exports.tentativeDateSC = regionFunctions.runWith(runtimeOpts).https
       const subscribedCases = await getSubscribedCases();
       console.log(`[info] [scCauseListScrapper] Retrieved ${subscribedCases.length} subscribed cases from DB.`);
 
+      if (subscribedCases.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No subscribed cases found, Cron job completed successfully"
+        });
+      }
+
       for (const row of subscribedCases) {
         try {
-          console.log(`[info] [tentativeDateSC] Processing case ID ${row.id}, Case Number: ${row.case_number}, Diary Number: ${row.diary_number}, ${(row.case_number.split("No")[0]).trim()}`);
-
-          const case_type = caseTypeMapping[caseTypeReverseMapping[(row.case_number.split("No")[0]).trim()]] || 9999;
-          const case_no = row.diary_number.split('/')[0];
-          const case_year = row.diary_number.split('/')[1];
+          console.log(`[info] [tentativeDateSC] Processing case ID ${row.id}, Diary Number: ${row.diary_number}`);
 
           const formData = {
-            caseType: case_type,
-            caseNo: case_no,
-            caseYear: case_year,
+            diaryNumber: row.diary_number,
           };
 
           const tentativeDate = await tentativeDateScrapper(formData);
 
           if (tentativeDate) {
-            await updateUserCase(row.id, tentativeDate);
-            console.log(`[info] [tentativeDateSC] Updated case ID ${row.id} with tentative date ${tentativeDate}.`);
+            const updated = await updateUserCase(row.id, tentativeDate);
+            if (updated) {
+              console.log(`[info] [tentativeDateSC] Updated case ID ${row.id} with tentative date ${tentativeDate}.`);
+            }
           }
         } catch (error) {
           console.error(`[error] [tentativeDateSC] Failed to process case ID ${row.id}, Case Number: ${row.case_number}. Error: ${error.message}`);

@@ -45,19 +45,19 @@ const createPage = async (browser) => {
 };
 
 /**
- * Navigate to the cause list page
+ * Navigate to case status by diary number (diary no + year + captcha only)
  * @param {Object} page - Page instance
  * @returns {Promise<void>}
  */
 const navigateToPage = async (page) => {
-  await page.goto('https://www.sci.gov.in/case-status-case-no/', {
+  await page.goto('https://www.sci.gov.in/case-status-diary-no/', {
     waitUntil: 'networkidle0',
     timeout: 60000
   });
-  console.log('[info] [browserManager] Successfully navigated to case status page');
+  console.log('[info] [browserManager] Successfully navigated to case-status-diary-no page');
 
-  // Wait for the form to be ready
-  await page.waitForSelector('#case_type', { visible: true, timeout: 30000 });
+  // Wait for the form to be ready (diary number + year)
+  await page.waitForSelector('#diary_no', { visible: true, timeout: 30000 });
   console.log('[info] [browserManager] Form is ready');
 };
 

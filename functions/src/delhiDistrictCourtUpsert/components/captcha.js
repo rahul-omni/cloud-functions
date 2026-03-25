@@ -1,28 +1,10 @@
-const functions = require('firebase-functions');
 const axios = require('axios');
-
-// Get OpenAI key from Firebase config
-const getOpenAIKey = () => {
-    // Try to get key from Firebase config
-    const key = functions.config()?.environment?.openai_api_key;
-    
-    console.log('🔑 Captcha Solver - OpenAI Key status:', key ? '✅ Found' : '❌ Missing');
-    
-    if (!key) {
-        console.error('🔴 OpenAI API key missing from Firebase config');
-        console.log('💡 Set the key using: firebase functions:config:set environment.openai_api_key="YOUR_KEY"');
-    }
-    
-    return key;
-};
-
-const KEY = getOpenAIKey();
+const { getOpenAiKeyFromSecretManager } = require('../../config/getOpenAiKeyFromSecretManager');
 
 // Solve captcha using OpenAI Vision API
 async function solveCaptcha(buf) {
-    if (!KEY) {
-        throw new Error('OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.');
-    }
+    const KEY = await getOpenAiKeyFromSecretManager(undefined, undefined, 'districtEastDelhiCaptcha');
+    if (!KEY) throw new Error('OpenAI API key not available from Secret Manager');
 
     const dataURL = 'data:image/png;base64,' + buf.toString('base64');
     
@@ -88,9 +70,8 @@ Your response:`
 
 // Retry captcha solving with more specific prompt
 async function solveCaptchaRetry(buf) {
-    if (!KEY) {
-        throw new Error('OpenAI API key not configured');
-    }
+    const KEY = await getOpenAiKeyFromSecretManager(undefined, undefined, 'districtEastDelhiCaptchaRetry');
+    if (!KEY) throw new Error('OpenAI API key not available from Secret Manager');
 
     const dataURL = 'data:image/png;base64,' + buf.toString('base64');
     

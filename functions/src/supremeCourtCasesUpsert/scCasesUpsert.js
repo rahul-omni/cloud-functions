@@ -1,39 +1,44 @@
-const functions = require('firebase-functions');
 const puppeteer = require('puppeteer-core');
 const axios     = require('axios');
 const chromium = require('chrome-aws-lambda');
-
-
-const openAiKey = functions.config().environment.openai_api_key;
-const KEY = openAiKey
-
-if (!KEY) { console.error('🔴  OPENAI_API_KEY missing'); process.exit(1); }
+const { getOpenAiKeyFromSecretManager } = require('../config/getOpenAiKeyFromSecretManager');
 
 const wait  = ms => new Promise(r => setTimeout(r, ms));
 const digits = d => d.replace(/-/g, '');          // 01-01-2025 → 01012025
 
 /* ─── arithmetic captcha via OpenAI Vision ─── */
 const solveCaptcha = async (buf) => {
+  const KEY = await getOpenAiKeyFromSecretManager(undefined, undefined, 'scCasesUpsert');
+  if (!KEY) throw new Error('OpenAI API key not available from Secret Manager');
+
   const dataURL = 'data:image/png;base64,' + buf.toString('base64');
-  const r = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-4-turbo',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text',
-            text: 'Image shows a simple "+" or "-" arithmetic task; reply ONLY the integer result.' },
-          { type: 'image_url', image_url: { url: dataURL } }
-        ]
-      }],
-      max_tokens: 5
-    },
-    { headers: { Authorization: `Bearer ${KEY}` } }
-  );
-  const ans = r.data.choices[0].message.content.trim();
-  if (!/^-?\d+$/.test(ans)) throw new Error('Non-numeric answer');
-  return ans;
+  try {
+    const r = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text',
+              text: 'Image shows a simple "+" or "-" arithmetic task; reply ONLY the integer result.' },
+            { type: 'image_url', image_url: { url: dataURL } }
+          ]
+        }],
+        max_tokens: 5
+      },
+      { headers: { Authorization: `Bearer ${KEY}` }, timeout: 30000 }
+    );
+    const ans = r.data.choices[0].message.content.trim();
+    if (!/^-?\d+$/.test(ans)) throw new Error('Non-numeric answer');
+    return ans;
+  } catch (err) {
+    const status = err.response?.status;
+    const body = err.response?.data;
+    console.error('[solveCaptcha] OpenAI API error:', status, body ? JSON.stringify(body) : err.message);
+    if (body?.error?.message) console.error('[solveCaptcha] OpenAI message:', body.error.message);
+    throw err;
+  }
 }
 
 

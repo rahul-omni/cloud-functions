@@ -1,7 +1,9 @@
 const functions = require("firebase-functions");
 const regionFunctions = functions.region('asia-south1');
-const { fetchSupremeCourtOTF } = require('../supremeCourtScrapper/supremeCourtOTF');
-const { connectToDatabase, insertOrder, updateOrder, markSyncError } = require('./components/db');
+const { getOpenAiKeyFromSecretManager } = require('../config/getOpenAiKeyFromSecretManager');
+const { getRequiredDatabaseUrl } = require('../util/requireParam');
+const { fetchSupremeCourtOTF } = require('./supremeCourtOTF');
+const { connectToDatabase, updateOrder, markSyncError } = require('./components/db');
 const { transformResults } = require('./components/utils');
 
 // Runtime options for the function
@@ -10,8 +12,12 @@ const runtimeOpts = {
   memory: '2GB',
 };
 
+const LOG_PREFIX = 'supremeCourtOTF';
+
 /**
- * HTTP Cloud Function for scraping Supreme Court cases
+ * HTTP Cloud Function for scraping Supreme Court cases.
+ * - OpenAI API key: from Secret Manager (reusable getOpenAiKeyFromSecretManager).
+ * - Database URL: from param DATABASE_URL (reusable requireParam).
  */
 exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
   .onRequest(async (req, res) => {
@@ -21,17 +27,37 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
   let dbClient = null;
   let id = "";
 
+  let databaseUrl;
+  try {
+    databaseUrl = getRequiredDatabaseUrl();
+  } catch (e) {
+    console.error('[error] [supremeCourtOTF] Failed to get database URL:', e.message);
+    return res.status(500).json({ success: false, error: e.message });
+  }
+
+  let openAiKey;
+  try {
+    openAiKey = await getOpenAiKeyFromSecretManager(undefined, undefined, LOG_PREFIX);
+  } catch (err) {
+    console.error('[error] [supremeCourtOTF] Failed to read OpenAI key from Secret Manager (V2):', err.message, 'code:', err.code, 'details:', err.details || err.response);
+    if (err.stack) console.error('[error] [supremeCourtOTF] stack:', err.stack);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to read OpenAI key from Secret Manager.'
+    });
+  }
+
   try {
     let body = req.body;
     if (typeof req.body === 'string') {
         body = JSON.parse(req.body);
     }
 
-    // Now extract from parsed body
+    // Now extract from parsed body (support both diaryNumber and diary_number for app/website compatibility)
     const caseType = body?.caseType || "";
     const caseNumber = body?.caseNumber || "";
     const caseYear = body?.caseYear || "";
-    const diaryNumber = body?.diaryNumber || "";
+    const diaryNumber = body?.diaryNumber || body?.diary_number || "";
 
     id = body?.id || "";
 
@@ -47,8 +73,8 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
 
     let results = [];
 
-    // Scrape the cases for supreme court and high court
-    results = await fetchSupremeCourtOTF(caseType, caseNumber, caseYear, diaryNumber);
+    // Scrape the cases for supreme court and high court (params passed in)
+    results = await fetchSupremeCourtOTF(caseType, caseNumber, caseYear, diaryNumber, openAiKey);
 
     console.log(`[info] [supremeCourtOTF] Scraped ${results}`);
     
@@ -63,10 +89,13 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
         transformedResults = results;
     }
 
-    // Connect to database
-    dbClient = await connectToDatabase();
+    // Connect to database using param (not functions.config())
+    dbClient = await connectToDatabase({ connectionString: databaseUrl });
 
     if (id) {
+
+      console.log("[info] [supremeCourtOTF] id found, updating order", id);
+      
       // When no results found, mark case as sync error (same as highCourtCasesUpsert)
       if (!transformedResults || transformedResults.length === 0) {
         await markSyncError(dbClient, id);
@@ -85,15 +114,13 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     }
 
     if (transformedResults.length === 0) {
-      return res.status(200).json({
+      return res.status(200).json({ 
         success: true,
         message: "No new cases to insert",
         data: transformedResults
       });
     }
 
-    //Insert orders into database
-    // await insertOrder(dbClient, transformedResults);
 
     res.status(200).json({
       success: true,
@@ -106,7 +133,7 @@ exports.supremeCourtOTF = regionFunctions.runWith(runtimeOpts).https
     // When id is provided, mark case as sync error (same as highCourtCasesUpsert)
     if (id) {
       try {
-        const errDbClient = dbClient || await connectToDatabase();
+        const errDbClient = dbClient || await connectToDatabase({ connectionString: databaseUrl });
         await markSyncError(errDbClient, id);
         if (!dbClient && errDbClient) {
           await errDbClient.end();

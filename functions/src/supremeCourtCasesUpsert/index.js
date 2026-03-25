@@ -44,7 +44,11 @@ exports.supremeCourtCasesUpsert = regionFunctions.runWith(runtimeOpts).https
       // Scrape the cases for supreme court and high court
       results = await fetchSupremeCourtJudgments(date);
 
-      console.log(`[info] [supremeCourtCasesUpsert] Scraped ${results}`);
+      console.log(`[info] [supremeCourtCasesUpsert] Scraped ${results.length} rows`);
+
+      let updatedCount = 0;
+      let insertedCount = 0;
+      let skippedCount = 0;
 
       // Transform results to create separate rows for each judgment
       for (const result of results) {
@@ -68,10 +72,26 @@ exports.supremeCourtCasesUpsert = regionFunctions.runWith(runtimeOpts).https
           existingCase = await findCaseByDiary(dbClient, diaryNumber);
         }
 
-        if (existingCase) continue; // already exists → skip
+        if (existingCase) {
+          // Upsert: merge new ROP URL/date into existing case if not already present
+          console.log(`[info] [supremeCourtCasesUpsert] Upserting case ID ${existingCase.id} with diary number ${diaryNumber} and case number ${caseNo}`);
+          const orderData = [{
+            diary_number: diaryNumber,
+            case_number: caseNo || existingCase.case_number,
+            parties: `${petitioner} vs ${respondent}`,
+            judgment_date: ropDate,
+            judgment_url: ropURL ? [ropURL] : []
+          }];
+          await updateOrder(dbClient, orderData, existingCase.id);
+          updatedCount += 1;
+          continue;
+        }
 
         // Nothing to insert without identifiers
-        if (!diaryNumber) continue;
+        if (!diaryNumber) {
+          skippedCount += 1;
+          continue;
+        }
 
         const order = {
           judgmentDate: ropDate,
@@ -86,13 +106,16 @@ exports.supremeCourtCasesUpsert = regionFunctions.runWith(runtimeOpts).https
           judgment_date: ropDate,
           judgment_url: { orders: [order] }
         });
+        insertedCount += 1;
       }
 
+      console.log(`[info] [supremeCourtCasesUpsert] Done: updated ${updatedCount} existing, inserted ${insertedCount} new, skipped ${skippedCount} (no diary)`);
 
       res.status(200).json({
         success: true,
         message: "Cron job completed successfully",
-        data: results
+        data: results,
+        summary: { updated: updatedCount, inserted: insertedCount, skipped: skippedCount }
       });
 
     } catch (error) {

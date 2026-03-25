@@ -255,34 +255,53 @@ function extractDiaryNumber(caseDetails) {
     return match ? `${match[2]}/${match[3]}` : '';
 }
 
-// Transform scraped data to database schema format
+// Transform scraped data to database schema format (case_details table, same as Delhi).
+// caseItem may be a single row or a merged case with order_details[], judgment_url[], judgment_text[] already set.
 function transformToDatabaseSchema(caseItem, court, searchData) {
     const currentTimestamp = new Date().toISOString();
     const caseType = extractCaseType(caseItem.case_type_number_year);
-    const diaryNumber = extractDiaryNumber(caseItem.case_type_number_year);
-    
+    const diaryNumber = searchData.diaryNumberFormatted || extractDiaryNumber(caseItem.case_type_number_year);
+
+    // Support Supreme Court-style judgment_url: { orders: [{ gcsPath, filename, judgmentDate, courtType }] }
+    const hasOrdersFormat = caseItem.judgment_url && typeof caseItem.judgment_url === 'object' && Array.isArray(caseItem.judgment_url.orders);
+    const judgmentUrlValue = hasOrdersFormat
+        ? caseItem.judgment_url
+        : (caseItem.copy_of_order_url ? [caseItem.copy_of_order_url] : []);
+    const judgmentDate = caseItem.judgment_date != null ? caseItem.judgment_date : (caseItem.order_date || '');
+    const judgmentTexts = Array.isArray(caseItem.judgment_text) && caseItem.judgment_text.length > 0
+        ? caseItem.judgment_text
+        : (caseItem.order_type ? [caseItem.order_type] : []);
+
     return {
-        serial_number: caseItem.serial_number || '',
+        serial_number: caseItem.serial_number != null ? String(caseItem.serial_number) : '',
         diary_number: diaryNumber,
         case_number: caseItem.case_type_number_year || '',
-        parties: '', // not available in district court data
-        advocates: '', // not available in district court data
-        bench: '', // empty as requested
-        judgment_by: '', // not available in district court data
-        judgment_date: caseItem.order_date || '',
-        court: 'District Court', // hardcoded main court name
+        parties: '',
+        advocates: '',
+        bench: '',
+        judgment_by: '',
+        judgment_date: judgmentDate,
+        court: searchData.court || 'District Court',
         date: currentTimestamp,
         created_at: currentTimestamp,
         updated_at: currentTimestamp,
-        judgment_url: caseItem.copy_of_order_url ? [caseItem.copy_of_order_url] : [],
-        file_path: '', // empty string as default
-        judgment_text: caseItem.order_type ? [caseItem.order_type] : [],
+        judgment_url: judgmentUrlValue,
+        file_path: '',
+        judgment_text: judgmentTexts,
         case_type: caseType,
-        city: '', // empty as requested
-        district: 'Gurugram', // hardcoded
-        judgment_type: caseItem.order_type || '',
+        city: searchData.city || 'Gurugram',
+        district: searchData.courtName || 'Gurugram',
+        judgment_type: caseItem.order_type || (judgmentTexts[0] || ''),
         courtComplex: searchData.courtComplex || '',
-        courtType: court.court_name || '' // specific court for each entry
+        courtType: caseItem.courtType != null ? caseItem.courtType : (court && court.court_name ? court.court_name : ''),
+        filing_number: '',
+        filing_date: '',
+        registered_on: '',
+        case_status: '',
+        all_parties: [],
+        listing_history: [],
+        order_details: Array.isArray(caseItem.order_details) ? caseItem.order_details : [],
+        site_sync: 1
     };
 }
 

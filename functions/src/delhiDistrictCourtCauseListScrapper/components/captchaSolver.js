@@ -1,14 +1,10 @@
-const functions = require('firebase-functions');
 const axios = require('axios');
-
-const KEY = functions.config().environment?.openai_api_key;
-
-if (!KEY) { 
-  console.error("🔴 Missing OPENAI_API_KEY"); 
-  process.exit(1);
-}
+const { getOpenAiKeyFromSecretManager } = require('../../config/getOpenAiKeyFromSecretManager');
 
 const solveCaptcha = async (buf) => {
+  const KEY = await getOpenAiKeyFromSecretManager(undefined, undefined, 'delhiDistrictCourtCaptcha');
+  if (!KEY) throw new Error('OpenAI API key not available from Secret Manager');
+
   const dataURL = "data:image/png;base64," + buf.toString("base64");
 
   // MUCH more accurate prompt

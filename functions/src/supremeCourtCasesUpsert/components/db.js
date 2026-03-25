@@ -1,15 +1,21 @@
-const functions = require('firebase-functions');
 const { Client } = require('pg');
+const { getDatabaseUrlFromSecretManager } = require('../../config/getOpenAiKeyFromSecretManager');
 
-// Database connection function
+// Database connection function (DATABASE_URL from Secret Manager V2)
 async function connectToDatabase() {
+  const connectionString = await getDatabaseUrlFromSecretManager(
+    undefined,
+    undefined,
+    'supremeCourtCasesUpsert-db'
+  );
+
   const client = new Client({
-    connectionString: functions.config().environment.database_url,
+    connectionString,
     ssl: {
       rejectUnauthorized: false
     }
   });
-  
+
   try {
     await client.connect();
     console.log('✅  Connected to PostgreSQL database');
@@ -126,7 +132,9 @@ async function updateOrder(dbClient, orderData, id) {
     }
     const row = rowResult.rows[0];
 
-    const judgment_url = row.judgment_url;
+    const judgment_url = row.judgment_url && row.judgment_url.orders
+      ? { ...row.judgment_url, orders: [...row.judgment_url.orders] }
+      : { orders: [] };
 
     const now = new Date().toISOString();
 
@@ -156,8 +164,10 @@ async function updateOrder(dbClient, orderData, id) {
 
     for (const caseData of mappedCases) {
         const judgementDate = caseData.judgment_date;
+        const newUrl = caseData.judgment_url && caseData.judgment_url[0];
+        if (!newUrl && !judgementDate) continue;
         let exists = false;
-        for (const rowUrl of row.judgment_url.orders) {
+        for (const rowUrl of judgment_url.orders) {
             if (rowUrl.judgmentDate === judgementDate) {
                 exists = true;
                 break;
@@ -165,9 +175,9 @@ async function updateOrder(dbClient, orderData, id) {
         }
         if (!exists) {
             judgment_url.orders.push({
-                gcsPath: caseData.judgment_url[0],
+                gcsPath: newUrl || '',
                 filename: '',
-                judgmentDate: judgementDate,
+                judgmentDate: judgementDate || '',
             });
         }
     }

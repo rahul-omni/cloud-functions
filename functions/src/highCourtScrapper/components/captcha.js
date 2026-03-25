@@ -1,18 +1,11 @@
-const functions = require('firebase-functions');
 const axios = require('axios');
-
-
-const openAiKey = functions.config().environment.openai_api_key;
-const KEY = openAiKey;
-
-
-if (!KEY) { 
-    console.error('🔴  OPENAI_API_KEY missing'); 
-    process.exit(1); 
-}
+const { getOpenAiKeyFromSecretManager } = require('../../config/getOpenAiKeyFromSecretManager');
 
 // Solve captcha using OpenAI Vision
 async function solveCaptcha(buf) {
+    const KEY = await getOpenAiKeyFromSecretManager(undefined, undefined, 'highCourtCaptcha');
+    if (!KEY) throw new Error('OpenAI API key not available from Secret Manager');
+
     const dataURL = 'data:image/png;base64,' + buf.toString('base64');
     
     const r = await axios.post(

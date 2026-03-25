@@ -1,28 +1,37 @@
 const { update_notification_status, get_notification_by_id } = require('../db/notificationProcess');
-const functions = require('firebase-functions');
-const { accessWhatsappSecretVersion } = require('../config/secretManager');
+const { createSecretManagerV2 } = require('../config/secretManagerV2');
 
 // WhatsApp Configuration
-const WHATSAPP_API_URL = functions.config().environment.whatsapp_api_url;
-const WHATSAPP_PHONE_NUMBER_ID = functions.config().environment.whatsapp_phone_number_id;
-const TOKEN = functions.config().environment.whatsapp_token;
+const WHATSAPP_API_URL = 'https://graph.facebook.com/v22.0';
 
-const getWhatsAppToken = async () => {
-  try {
-    const projectId = functions.config().environment.project_id;
-    const secretName = functions.config().environment.whatsapp_token_secret;
-    const token = await accessWhatsappSecretVersion(projectId, secretName);
-    
-    if (!token) {
-      throw new Error('WhatsApp token not found in secret');
-    }
+function getProjectId() {
+  return process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || '';
+}
 
-    return token;
-  } catch (error) {
-    console.error('[error] Failed to get WhatsApp token:', error);
-    throw error;
+let _smv2Promise = null;
+async function getSecretManagerV2() {
+  if (_smv2Promise) return _smv2Promise;
+  const projectId = getProjectId();
+  if (!projectId) {
+    throw new Error('Project ID not found in env (GCLOUD_PROJECT/GOOGLE_CLOUD_PROJECT)');
   }
-};
+  _smv2Promise = createSecretManagerV2(projectId);
+  return _smv2Promise;
+}
+
+async function resolveWhatsAppConfig() {
+  const smv2 = await getSecretManagerV2();
+  // Store these in Secret Manager V2 as plain text secrets:
+  // - WHATSAPP_TOKEN
+  // - WHATSAPP_PHONE_NUMBER_ID
+  const [token, phoneNumberId] = await Promise.all([
+    smv2.accessPlainTextSecret('WHATSAPP_TOKEN'),
+    smv2.accessPlainTextSecret('WHATSAPP_PHONE_NUMBER_ID'),
+  ]);
+  if (!token) throw new Error('Missing Secret Manager V2 secret: WHATSAPP_TOKEN');
+  if (!phoneNumberId) throw new Error('Missing Secret Manager V2 secret: WHATSAPP_PHONE_NUMBER_ID');
+  return { token: token.trim(), phoneNumberId: phoneNumberId.trim() };
+}
 
 const processWhatsAppNotifications = async (id, template_name, data) => {
   console.log('[start] [processWhatsAppNotifications] whatsapp notification started for id: ', id);
@@ -65,16 +74,15 @@ const processWhatsAppNotifications = async (id, template_name, data) => {
       };
           // Construct the API endpoint URL
       const apiUrl = WHATSAPP_API_URL.replace(/\/+$/, '');
-      const endpoint = `${apiUrl}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
-      const token = TOKEN;
+      const { token, phoneNumberId } = await resolveWhatsAppConfig();
+      const endpoint = `${apiUrl}/${phoneNumberId}/messages`;
 
        // Make the API request
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token.trim()}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(requestBody)
       });
@@ -161,15 +169,15 @@ const processWhatsAppNotificationsWithTemplate = async (id, template_name, data 
 
       // API endpoint
       const apiUrl = WHATSAPP_API_URL.replace(/\/+$/, '');
-      const endpoint = `${apiUrl}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
-      const token = TOKEN;
+      const { token, phoneNumberId } = await resolveWhatsAppConfig();
+      const endpoint = `${apiUrl}/${phoneNumberId}/messages`;
 
       // Send request
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token.trim()}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(requestBody)
       });

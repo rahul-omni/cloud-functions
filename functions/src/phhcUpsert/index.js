@@ -1,19 +1,35 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const functions = require("firebase-functions");
+const { defineSecret } = require('firebase-functions/params');
 const regionFunctions = functions.region('asia-south1');
 const { PHHCJudgmentsScrapper } = require('./phhcScrapper');
 const { getCaseDetails, connectToDatabase, updateJudgmentUrl } = require("./components/database");
 const { scrapingDetails } = require("./scrapingDetails");
 
+// Secret: DATABASE_URL in Secret Manager (production); .env DATABASE_URL for local/emulator
+const databaseUrlSecret = defineSecret('DATABASE_URL');
+
 // Runtime options for the function
 const runtimeOpts = {
   timeoutSeconds: 540,
   memory: '2GB',
+  secrets: [databaseUrlSecret],
 };
 
 exports.phhcUpsert = regionFunctions.runWith(runtimeOpts).https
   .onRequest(async (req, res) => {
     let result = [];
     let dbClient;
+
+    const connectionString = databaseUrlSecret.value() || process.env.DATABASE_URL;
+    if (!connectionString || !connectionString.trim()) {
+      console.error('DATABASE_URL not set (Secret Manager or .env)');
+      return res.status(500).send({
+        message: 'Database configuration missing',
+        error: 'Set DATABASE_URL in Secret Manager (production) or .env (local)'
+      });
+    }
     
     try {
       const id = req.body.id || null;
@@ -21,7 +37,7 @@ exports.phhcUpsert = regionFunctions.runWith(runtimeOpts).https
       
       if (id) {
         // Case-specific scraping
-        dbClient = await connectToDatabase();
+        dbClient = await connectToDatabase(connectionString);
         const caseDetails = await getCaseDetails(dbClient, id);
         
         if (!caseDetails) {
@@ -36,8 +52,8 @@ exports.phhcUpsert = regionFunctions.runWith(runtimeOpts).https
           case_type
         } = caseDetails;
         
-        // Pass the original id and diary_number to scrapingDetails
-        const result = await scrapingDetails(null, diary_number, case_type, id);
+        // Pass the original id and diary_number to scrapingDetails; connectionString for DB
+        const result = await scrapingDetails(null, diary_number, case_type, id, null, connectionString);
         console.log('Scraping result:', result);
         
         if (!result || result.length == 0) {
@@ -73,7 +89,7 @@ exports.phhcUpsert = regionFunctions.runWith(runtimeOpts).https
         }
         
         console.log("[info] [phhcUpsert] payload body:", { date, caseType, caseNumber, caseYear });
-        await PHHCJudgmentsScrapper(date, caseType, caseNumber, caseYear);
+        await PHHCJudgmentsScrapper(date, caseType, caseNumber, caseYear, connectionString);
       }
 
     } catch (error) {

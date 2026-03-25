@@ -1,18 +1,18 @@
 const https = require('https');
-const { Storage } = require('@google-cloud/storage');
 const { PassThrough } = require('stream');
-
-// Initialize GCS
-const storage = new Storage(); // Will use GOOGLE_APPLICATION_CREDENTIALS env var
+const { createStorageClientFromSecretManagerV2 } = require('../../config/secretManagerV2');
 
 /**
- * Downloads a PDF and uploads it to a GCS bucket
+ * Downloads a PDF and uploads it to a GCS bucket.
+ * Uses secretManagerV2 bootstrap credentials (SA with storage.objects.create on bucket).
  * @param {Array} cookies - Array of cookie objects
  * @param {string} url - PDF download URL
  * @param {string} [filename] - Optional filename in GCS (bucket name will be extracted from filename)
  * @returns {Promise<Object>} - Object containing GCS path and signed URL
  */
 async function uploadPDFToGCS(cookies, url, filename) {
+    const storage = await createStorageClientFromSecretManagerV2();
+
     return new Promise((resolve, reject) => {
         // Remove duplicate cookies by name
         const uniqueCookies = Object.values(
@@ -164,7 +164,7 @@ async function uploadPDFToGCS(cookies, url, filename) {
  */
 async function generateSignedUrl(gcsPath, expiresInDays = 7) {
     try {
-        // Parse GCS path
+        const storage = await createStorageClientFromSecretManagerV2();
         const pathMatch = gcsPath.match(/^gs:\/\/([^\/]+)\/(.+)$/);
         if (!pathMatch) {
             throw new Error('Invalid GCS path format');

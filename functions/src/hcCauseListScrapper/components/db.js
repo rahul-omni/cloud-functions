@@ -132,7 +132,7 @@ const getSubscribedCases = async () => {
           JOIN users u ON sc.user_id = u.id
           JOIN case_details cd ON sc.case_id = cd.id
           WHERE (cd.last_synced IS NULL OR cd.last_synced::date <> CURRENT_DATE)
-            AND cd.court = 'High Court'
+            AND cd.court = 'High Court' AND cd.city = 'Delhi'
           LIMIT 100
       )
       UPDATE case_details cd
@@ -144,6 +144,7 @@ const getSubscribedCases = async () => {
           cd.case_number,
           cd.id AS case_id,
           cd.diary_number,
+          (SELECT country_code FROM users WHERE id = r.user_id) AS country_code,
           (SELECT mobile_number FROM users WHERE id = r.user_id) AS mobile_number,
           cd.last_synced;`;
 
@@ -151,11 +152,14 @@ const getSubscribedCases = async () => {
   return rows;
 };
 
-const insertNotifications = async (diary_number, user_id, method, contact, message) => {
+// Option B: one notification per (user_id, case_id, day, method)
+// `day` is a YYYY-MM-DD string (or a Date) that maps to notifications.day (@db.Date).
+const insertNotifications = async (case_id, day, user_id, method, contact, message) => {
   const sql = `
     INSERT INTO notifications (
       id,
-      dairy_number,
+      case_id,
+      day,
       user_id,
       method,
       contact,
@@ -164,19 +168,27 @@ const insertNotifications = async (diary_number, user_id, method, contact, messa
       created_at
     ) VALUES (
       gen_random_uuid(),
-      $1,
-      $2,
-      $3,
-      $4,
-      $5,
-      $6,
+      $1,  -- case_id
+      $2,  -- day
+      $3,  -- user_id
+      $4,  -- method
+      $5,  -- contact
+      $6,  -- message
+      $7,  -- status
       CURRENT_TIMESTAMP
     )
+    ON CONFLICT (user_id, case_id, day, method)
+    DO UPDATE SET
+      contact = EXCLUDED.contact,
+      message = EXCLUDED.message,
+      status = 'pending',
+      created_at = CURRENT_TIMESTAMP
     RETURNING id, method;
   `;
 
   const values = [
-    diary_number,
+    case_id,
+    day,
     user_id,
     method,
     contact,

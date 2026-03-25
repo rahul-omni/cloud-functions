@@ -1,20 +1,16 @@
-const functions = require('firebase-functions');
 const puppeteer = require('puppeteer-core');
 const axios     = require('axios');
 const chromium = require('chrome-aws-lambda');
 const { setCaseTypeAndSetValue, enterDate } = require('./components/utils');
-
-
-const openAiKey = functions.config().environment.openai_api_key;
-const KEY = openAiKey
-
-if (!KEY) { console.error('🔴  OPENAI_API_KEY missing'); process.exit(1); }
+const { getOpenAiKeyFromSecretManager } = require('../config/getOpenAiKeyFromSecretManager');
 
 const wait  = ms => new Promise(r => setTimeout(r, ms));
 
-
 /* ─── arithmetic captcha via OpenAI Vision ─── */
 const solveCaptcha = async (buf) => {
+  const KEY = await getOpenAiKeyFromSecretManager(undefined, undefined, 'addCases');
+  if (!KEY) throw new Error('OpenAI API key not available from Secret Manager');
+
   const dataURL = 'data:image/png;base64,' + buf.toString('base64');
   const r = await axios.post(
     'https://api.openai.com/v1/chat/completions',

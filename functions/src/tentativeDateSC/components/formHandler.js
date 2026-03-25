@@ -2,52 +2,57 @@ const axios = require('axios');
 const { wait, digits } = require('./utils');
 
 /**
- * Fill the cause list form with provided parameters
+ * Fill the case-status-diary-no form: diary number + year only
  * @param {Object} page - Page instance
- * @param {Object} formData - Object containing all form data
+ * @param {Object} formData - { diaryNumber: "5271/2026" } (from DB)
  * @returns {Promise<void>}
  */
 const fillForm = async (page, formData) => {
-  console.log('[info] [formHandler] Starting form field population...');
+  console.log('[info] [formHandler] Starting form field population (diary no + year)...');
 
   try {
-    // 1️⃣ Case Type (dropdown)
-    if (formData.caseType) {
-      await page.select('#case_type', formData.caseType);
-      await wait(300);
-      console.log(`[debug] [formHandler] Case Type set to: ${formData.caseType}`);
+    const diaryNumber = formData.diaryNumber || '';
+    const parts = diaryNumber.split('/');
+    if (parts.length !== 2) {
+      throw new Error(`Invalid diary number. Expected "number/year", got: "${diaryNumber}"`);
     }
+    const diaryNo = parts[0].trim();
+    const year = parts[1].trim();
 
-    // 2️⃣ Case Number (text input) - robust method
-    if (formData.caseNo) {
-      await page.evaluate((val) => {
-        const input = document.querySelector('#case_no');
-        if (input) {
-          input.focus();
-          input.value = val;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
+    // 1️⃣ Diary Number (text input)
+    await page.waitForSelector('#diary_no', { visible: true, timeout: 10000 });
+    await page.click('#diary_no', { clickCount: 3 });
+    await page.type('#diary_no', diaryNo, { delay: 100 });
+    await wait(300);
+    console.log(`[debug] [formHandler] Diary Number set to: ${diaryNo}`);
+
+    // 2️⃣ Diary Year (Select2 or plain select #year)
+    await page.waitForSelector('#year', { visible: true, timeout: 10000 }).catch(() => null);
+    await page.evaluate((y) => {
+      const select = document.querySelector('#year');
+      if (select) {
+        select.value = y;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        const select2Container = select.nextElementSibling;
+        if (select2Container && select2Container.classList.contains('select2')) {
+          const rendered = select2Container.querySelector('.select2-selection__rendered');
+          const option = select.querySelector(`option[value="${y}"]`);
+          if (rendered && option) {
+            rendered.textContent = option.textContent;
+            rendered.title = option.textContent;
+          }
         }
-      }, formData.caseNo);
-      await wait(300);
-      console.log(`[debug] [formHandler] Case Number set to: ${formData.caseNo}`);
-    }
-
-    // 3️⃣ Case Year (Select2 dropdown)
-    if (formData.caseYear) {
-      await page.click('#select2-year-container'); // open dropdown
-      await page.waitForSelector('.select2-search__field', { visible: true });
-      await page.type('.select2-search__field', formData.caseYear, { delay: 100 });
-      await page.keyboard.press('Enter');
-      await wait(300);
-      console.log(`[debug] [formHandler] Case Year set to: ${formData.caseYear}`);
-    }
+      }
+    }, year);
+    await wait(500);
+    console.log(`[debug] [formHandler] Diary Year set to: ${year}`);
 
     console.log('[success] [formHandler] Form fields filled successfully');
   } catch (err) {
     console.error('[error] [formHandler] Failed to fill form fields:', err.message);
+    throw err;
   }
- await wait(2000);
+  await wait(2000);
 };
 
 /**

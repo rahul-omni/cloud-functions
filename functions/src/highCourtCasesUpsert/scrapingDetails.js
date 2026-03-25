@@ -3,16 +3,19 @@ const { initializeBrowser, setupDialogHandler, navigateToMainPage, selectHighCou
 const { scrapeData } = require('./components/scraper');
 
 // Main high court scraper function
-const scrapingDetails = async (date, diaryNumber, highCourtname, bench, caseTypeValue) => {
+// connectionString: PostgreSQL URL from Secret Manager or .env (required when DB is needed)
+const scrapingDetails = async (date, diaryNumber, highCourtname, bench, caseTypeValue, connectionString = null) => {
     console.log(`[start] [HighCourtJudgmentsScrapper] Scraping high court judgments for: ${date}`);
 
     let dbClient;
-    try {
-        dbClient = await connectToDatabase();
-        console.log('✅  Connected to database');
-    } catch (dbError) {
-        console.error('❌  Database setup failed:', dbError.message);
-        console.log('⚠️   Continuing without database...');
+    if (connectionString) {
+        try {
+            dbClient = await connectToDatabase(connectionString);
+            console.log('✅  Connected to database');
+        } catch (dbError) {
+            console.error('❌  Database setup failed:', dbError.message);
+            console.log('⚠️   Continuing without database...');
+        }
     }
 
     // Initialize browser
