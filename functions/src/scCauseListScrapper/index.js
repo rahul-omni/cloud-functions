@@ -561,10 +561,17 @@ exports.scCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
 
         try {
           const contact = `${country_code || ''}${mobile_number || ''}`.trim();
-          const { id } = await insertNotifications(case_id, dayISO, user_id, 'whatsapp', contact, message);
+          const inserted = await insertNotifications(case_id, dayISO, user_id, 'whatsapp', contact, message);
+
+          if (!inserted || !inserted.id) {
+            console.log(
+              `[info] Skip WhatsApp: already sent for case_id=${case_id} day=${dayISO} (notifications dedupe)`
+            );
+            continue;
+          }
 
           causeList.push({ user_id, case_id });
-          await processWhatsAppNotificationsWithTemplate(id, 'order_status', [identifier, formattedDate, firstUrl]);
+          await processWhatsAppNotificationsWithTemplate(inserted.id, 'order_status', [identifier, formattedDate, firstUrl]);
           await updateUserCase(case_id, formattedDate);
         } catch (notifyErr) {
           console.error(`[error] Failed to notify user ${user_id} for case ${case_number || diary_number}:`, notifyErr);

@@ -68,7 +68,9 @@ const scrapingDetails = async (date, diaryNumber, caseTypeValue, originalCaseId 
             try {
                 console.log(`[scrapingDetails] Processing case: ${caseLink.caseId}`);
                 
-                const caseData = await extractCaseDetails(page, caseLink.fullUrl);
+                const caseData = await extractCaseDetails(page, caseLink.fullUrl, {
+                    skipNavigation: caseLink.skipNavigation === true
+                });
                 
                 console.log('caseData from caseLink', caseData);
                 if (caseData) {
@@ -99,10 +101,10 @@ const scrapingDetails = async (date, diaryNumber, caseTypeValue, originalCaseId 
     } catch (error) {
         console.error('❌  Error:', error.message);
         console.log(`[error] [scrapingDetails]: ${error}`);
-        return [];
+        throw error;
     } finally {
         await browser.close();
-        console.log("[end] [scrapingDetails] PHHC Scraping completed successfully");
+        console.log('[end] [scrapingDetails] PHHC scrape run finished');
         
         if (dbClient) {
             try {

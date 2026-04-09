@@ -21,6 +21,7 @@ exports.phhcUpsert = regionFunctions.runWith(runtimeOpts).https
   .onRequest(async (req, res) => {
     let result = [];
     let dbClient;
+    let endedInError = false;
 
     const connectionString = databaseUrlSecret.value() || process.env.DATABASE_URL;
     if (!connectionString || !connectionString.trim()) {
@@ -93,6 +94,7 @@ exports.phhcUpsert = regionFunctions.runWith(runtimeOpts).https
       }
 
     } catch (error) {
+      endedInError = true;
       console.error('❌  Error:', error.message);
       console.log(`[error] [phhcUpsert]: ${error}`);
       
@@ -117,7 +119,11 @@ exports.phhcUpsert = regionFunctions.runWith(runtimeOpts).https
           console.error('Error closing database:', dbCloseError.message);
         }
       }
-      console.log("[end] [phhcUpsert] PHHC Scraping completed successfully");
+      console.log(
+        endedInError
+          ? '[end] [phhcUpsert] request finished (500 or error path)'
+          : '[end] [phhcUpsert] request finished'
+      );
     }
 
     res.send({

@@ -3,7 +3,23 @@ const axios = require("axios");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 
 const storage = new Storage();
+/** Grant Cloud Functions runtime SA (e.g. PROJECT_ID@appspot.gserviceaccount.com) roles/storage.objectCreator on this bucket, or uploads fall back to the court URL only. */
 const bucketName = "phhc-chandigarh-causelist";
+
+/** PHHC often serves PDFs as application/octet-stream or with no correct Content-Type */
+function bufferLooksLikePdf(data) {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  if (buf.length < 5) return false;
+  let i = 0;
+  if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) i = 3;
+  return buf.slice(i, i + 4).toString("ascii") === "%PDF";
+}
+
+function bufferLooksLikeHtml(data) {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  const head = buf.slice(0, 256).toString("utf-8").trimStart().toLowerCase();
+  return head.startsWith("<!doctype") || head.startsWith("<html");
+}
 
 /**
  * Generate filename for JSON storage
@@ -92,56 +108,62 @@ const saveExtractedPdfs = async (date, listType, mainSup, extractedPdfs) => {
  * @param {string} url - PDF URL to download
  * @param {string} date - Date in DD/MM/YYYY or DD-MM-YYYY format (for folder structure)
  * @param {string} cookieHeader - Cookie header string from browser session
- * @returns {Promise<{publicUrl: string, signedUrl: string, text: string}|null>}
+ * @param {string} [refererUrl] - Page URL from Puppeteer (best Referer for PDF request)
+ * @returns {Promise<{publicUrl: string, signedUrl: string, text: string}>}
  */
-const fetchUploadAndParsePdf = async (url, date, cookieHeader = null) => {
+const fetchUploadAndParsePdf = async (url, date, cookieHeader = null, refererUrl = null) => {
   try {
     console.log(`[debug] [storage] Downloading PDF from: ${url}`);
-    console.log(`[debug] [storage] Using cookies: ${cookieHeader ? 'Yes' : 'No'}`);
-    
-    // Prepare headers
+    console.log(`[debug] [storage] Using cookies: ${cookieHeader ? "Yes" : "No"}`);
+
     const headers = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-      "Referer": "https://highcourtchd.gov.in/",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-IN,en;q=0.9",
+      Referer:
+        refererUrl && String(refererUrl).trim()
+          ? String(refererUrl).trim()
+          : "https://highcourtchd.gov.in/?mod=causelist",
     };
-    
-    // Add cookies if provided
+
     if (cookieHeader) {
-      headers["Cookie"] = cookieHeader;
+      headers.Cookie = cookieHeader;
     }
-    
-    // Fetch PDF
+
     const response = await axios.get(url, {
       responseType: "arraybuffer",
-      headers: headers,
-      timeout: 60000, // 60 seconds timeout
-      maxRedirects: 5, // Allow redirects
-      validateStatus: function (status) {
-        return status >= 200 && status < 400; // Accept 2xx and 3xx status codes
-      }
+      headers,
+      timeout: 90000,
+      maxRedirects: 8,
+      maxContentLength: 80 * 1024 * 1024,
+      maxBodyLength: 80 * 1024 * 1024,
+      validateStatus: (status) => status >= 200 && status < 400,
     });
 
     console.log(`[debug] [storage] Response status: ${response.status}`);
-    console.log(`[debug] [storage] Response headers:`, JSON.stringify(response.headers, null, 2));
-
-    const contentType = response.headers["content-type"] || "";
+    const contentType = String(response.headers["content-type"] || "");
     console.log(`[debug] [storage] Content-Type: ${contentType}`);
-    
-    if (!contentType.includes("pdf")) {
-      // Check if response is HTML (might be an error page)
-      const responseText = response.data.toString('utf-8').substring(0, 500);
-      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-        throw new Error(`Server returned HTML instead of PDF. Status: ${response.status}. Response preview: ${responseText.substring(0, 200)}`);
-      }
-      throw new Error(`Not a valid PDF. Content-Type: ${contentType}, Status: ${response.status}`);
+
+    const pdfData = Buffer.from(response.data);
+
+    if (bufferLooksLikeHtml(pdfData)) {
+      const preview = pdfData.slice(0, 400).toString("utf-8").replace(/\s+/g, " ");
+      throw new Error(
+        `Server returned HTML instead of PDF (status ${response.status}). Preview: ${preview.slice(0, 280)}`
+      );
     }
 
-    const pdfData = response.data;
+    if (!bufferLooksLikePdf(pdfData)) {
+      throw new Error(
+        `Response is not a PDF (no %PDF header). Content-Type: ${contentType || "none"}, size: ${pdfData.length} bytes`
+      );
+    }
+
     console.log(`[debug] [storage] PDF downloaded, size: ${pdfData.length} bytes`);
 
-    // Extract text using pdfjs
     console.log(`[debug] [storage] Extracting text from PDF...`);
-    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfData) });
     const pdfDoc = await loadingTask.promise;
     let fullText = "";
 
@@ -161,50 +183,52 @@ const fetchUploadAndParsePdf = async (url, date, cookieHeader = null) => {
       formattedDate = `${dateParts[0]}-${dateParts[1]}-${dateParts[2]}`;
     }
 
-    // Upload PDF to bucket
     const filePath = `${formattedDate}/${Date.now()}-${Math.floor(Math.random() * 10000)}.pdf`;
-    const bucket = storage.bucket(bucketName);
-    const file = bucket.file(filePath);
-    
-    console.log(`[debug] [storage] Uploading PDF to gs://${bucketName}/${filePath}...`);
-    
-    // Upload PDF (bucket must be made public via IAM for uniform bucket-level access)
-    await file.save(pdfData, { 
-      contentType: "application/pdf",
-      metadata: {
-        cacheControl: 'public, max-age=31536000', // Cache for 1 year
-      }
-      // Note: Cannot use predefinedAcl or makePublic() when uniform bucket-level access is enabled
-      // Bucket must be made public via IAM policies instead
-    });
-    console.log(`[info] [storage] PDF uploaded successfully`);
+    let publicUrl;
 
-    // Construct public URL (will be accessible once bucket is made public via IAM)
-    const publicUrl = `https://storage.googleapis.com/${bucketName}/${encodeURIComponent(filePath)}`;
+    try {
+      const bucket = storage.bucket(bucketName);
+      const file = bucket.file(filePath);
+      console.log(`[debug] [storage] Uploading PDF to gs://${bucketName}/${filePath}...`);
+      await file.save(pdfData, {
+        contentType: "application/pdf",
+        metadata: {
+          cacheControl: "public, max-age=31536000",
+        },
+      });
+      publicUrl = `https://storage.googleapis.com/${bucketName}/${encodeURIComponent(filePath)}`;
+      console.log(`[info] [storage] PDF uploaded to GCS: ${publicUrl}`);
+    } catch (uploadErr) {
+      publicUrl = url;
+      console.warn(
+        `[warn] [storage] GCS upload failed (${uploadErr.message}). Using PHHC URL for links/notifications. Fix IAM: grant storage.objectCreator on gs://${bucketName} to the function service account.`
+      );
+    }
 
-    console.log(`[info] [storage] PDF processed successfully: ${publicUrl}`);
-    console.log(`[info] [storage] Note: File will be publicly accessible once bucket IAM policy grants 'allUsers' with 'Storage Object Viewer' role`);
-    
-    return { 
-      publicUrl, 
-      signedUrl: publicUrl, // Use public URL directly (no need for signed URL once bucket is public)
-      text: fullText 
+    return {
+      publicUrl,
+      signedUrl: publicUrl,
+      text: fullText,
     };
   } catch (err) {
     const errorDetails = {
       message: err.message,
-      url: url,
+      url,
       status: err.response?.status,
       statusText: err.response?.statusText,
-      headers: err.response?.headers,
-      responsePreview: err.response?.data ? err.response.data.toString('utf-8').substring(0, 500) : null
+      responsePreview: err.response?.data
+        ? Buffer.from(err.response.data).toString("utf-8").substring(0, 500)
+        : null,
     };
-    console.error(`[error] [storage] Failed to download/upload/parse PDF from ${url}:`, JSON.stringify(errorDetails, null, 2));
-    if (err.response) {
-      console.error(`[error] [storage] Response status: ${err.response.status}`);
-      console.error(`[error] [storage] Response data preview: ${errorDetails.responsePreview}`);
-    }
-    return null;
+    console.error(
+      `[error] [storage] Failed to download/upload/parse PDF from ${url}:`,
+      JSON.stringify(errorDetails, null, 2)
+    );
+    const msg =
+      err.response?.status != null
+        ? `HTTP ${err.response.status} ${err.response.statusText || ""}: ${err.message}`.trim()
+        : err.message;
+    throw new Error(msg);
   }
 };
 

@@ -1,4 +1,8 @@
-// Import all components from index
+/**
+ * Punjab & Haryana High Court — cause list browser scraper only.
+ * Mirrors highCourtScrapper.js: launch browser, fill portal form, extract PDF links + session cookies, close browser.
+ * PDF download, storage, DB matching, and WhatsApp are handled by the HTTP function (index.js) / db + notification helpers.
+ */
 const {
   launchBrowser,
   createPage,
@@ -8,104 +12,114 @@ const {
   waitForResults,
   extractPdfLinks,
   extractTableData,
-  wait
-} = require('./components');
+  wait,
+} = require("./components");
 
-/**
- * Main routine to fetch Punjab & Haryana High Court cause list
- * @param {Object} formData - Form data containing date and optional listType
- * @returns {Promise<Array>} - Array of PDF links
- */
-const fetchPHHCCauseList = async (formData) => {
-  console.log(`[start] [fetchPHHCCauseList] Scraping cause list with parameters:`, formData);
+const PHHCCauseListScrapper = async (formData) => {
+  console.log(
+    `[start] [PHHCCauseListScrapper] Scraping PHHC cause list with parameters:`,
+    formData
+  );
 
   let browser;
   try {
-    // Launch and configure browser
     browser = await launchBrowser();
     const page = await createPage(browser);
 
-    // Navigate to the page
     await navigateToPage(page);
-    
-    // Wait for page to fully load
     await wait(3000);
-    console.log('[debug] [fetchPHHCCauseList] Page loaded, waiting additional 2 seconds...');
+    console.log(
+      "[debug] [PHHCCauseListScrapper] Page loaded, waiting additional 2 seconds..."
+    );
     await wait(2000);
-    
-    // Fill form and submit
+
     await fillForm(page, formData);
-    
-    // Wait longer for AJAX to process and complete
-    console.log('[debug] [fetchPHHCCauseList] Form submitted, waiting 5 seconds for AJAX...');
+
+    console.log(
+      "[debug] [PHHCCauseListScrapper] Form submitted, waiting 5 seconds for AJAX..."
+    );
     await wait(5000);
-    
-    // Check current URL for debugging
+
     const currentUrl = page.url();
-    console.log(`[debug] [fetchPHHCCauseList] Current URL after form submission: ${currentUrl}`);
-    
-    // Wait for AJAX response and results table to load
-    // Increase timeout since AJAX might take time
+    console.log(
+      `[debug] [PHHCCauseListScrapper] Current URL after form submission: ${currentUrl}`
+    );
+
     await waitForResults(page);
-    
-    // Additional wait to ensure table is fully rendered
-    console.log('[debug] [fetchPHHCCauseList] Table found, waiting 3 seconds for full render...');
+
+    console.log(
+      "[debug] [PHHCCauseListScrapper] Table found, waiting 3 seconds for full render..."
+    );
     await wait(3000);
-    
-    // Debug: Check if table exists inside #show_causeList
+
     const tableInfo = await page.evaluate(() => {
-      const showCauseListDiv = document.querySelector('#show_causeList');
+      const showCauseListDiv = document.querySelector("#show_causeList");
       if (!showCauseListDiv) {
         return { divExists: false, tableExists: false };
       }
-      const table = showCauseListDiv.querySelector('table#tables11');
+      const table = showCauseListDiv.querySelector("table#tables11");
       return {
         divExists: true,
         tableExists: table !== null,
         divVisible: showCauseListDiv.offsetParent !== null,
-        divContentLength: showCauseListDiv.innerHTML.length
+        divContentLength: showCauseListDiv.innerHTML.length,
       };
     });
-    console.log(`[debug] [fetchPHHCCauseList] #show_causeList info:`, JSON.stringify(tableInfo, null, 2));
-    
-    // Extract PDF links with metadata (pass formData for fallback values)
+    console.log(
+      `[debug] [PHHCCauseListScrapper] #show_causeList info:`,
+      JSON.stringify(tableInfo, null, 2)
+    );
+
     const pdfLinks = await extractPdfLinks(page, formData.date, formData.listType);
-    
-    // Extract cookies from the browser session before closing
+
+    const refererUrl = page.url();
+
     const cookies = await page.cookies();
-    const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-    console.log(`[info] [fetchPHHCCauseList] Extracted ${cookies.length} cookie(s) from session`);
-    
-    // Only extract table data if we found PDF links (to avoid extracting wrong table)
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    console.log(
+      `[info] [PHHCCauseListScrapper] Extracted ${cookies.length} cookie(s) from session`
+    );
+
     let tableData = [];
     if (pdfLinks.length > 0) {
       tableData = await extractTableData(page);
     } else {
-      console.log('[debug] [fetchPHHCCauseList] Skipping tableData extraction - no PDF links found');
+      console.log(
+        "[debug] [PHHCCauseListScrapper] Skipping tableData extraction - no PDF links found"
+      );
     }
 
-    console.log(`[info] [fetchPHHCCauseList] Scraped ${pdfLinks.length} PDF link(s)`);
+    console.log(
+      `[info] [PHHCCauseListScrapper] Scraped ${pdfLinks.length} PDF link(s)`
+    );
 
     return {
-      pdfLinks: pdfLinks,
-      tableData: tableData,
-      cookies: cookies,
-      cookieHeader: cookieHeader
+      pdfLinks,
+      tableData,
+      cookies,
+      cookieHeader,
+      refererUrl,
     };
-
   } catch (error) {
-    console.error('[error] [fetchPHHCCauseList] Failed to get results:', error.message);
-    console.log('[debug] [fetchPHHCCauseList] Error details:', error);
+    console.error(
+      "[error] [PHHCCauseListScrapper] Failed to get results:",
+      error.message
+    );
     throw error;
   } finally {
     if (browser) {
       await closeBrowser(browser);
     }
-    console.log("[end] [fetchPHHCCauseList] Punjab & Haryana High Court Cause List Scraping completed");
+    console.log(
+      "[end] [PHHCCauseListScrapper] Punjab & Haryana High Court cause list scraping completed"
+    );
   }
 };
 
+/** @deprecated Use PHHCCauseListScrapper — alias kept for existing requires */
+const fetchPHHCCauseList = PHHCCauseListScrapper;
+
 module.exports = {
+  PHHCCauseListScrapper,
   fetchPHHCCauseList,
 };
-

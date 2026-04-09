@@ -183,6 +183,7 @@ const insertNotifications = async (case_id, day, user_id, method, contact, messa
       message = EXCLUDED.message,
       status = 'pending',
       created_at = CURRENT_TIMESTAMP
+    WHERE notifications.status IS DISTINCT FROM 'success'
     RETURNING id, method;
   `;
 
@@ -197,7 +198,7 @@ const insertNotifications = async (case_id, day, user_id, method, contact, messa
   ];
 
   const result = await db.query(sql, values);
-  return result.rows[0];
+  return result.rows[0] || null;
 };
 
 const updateUserCase = async (id, dateString) => {

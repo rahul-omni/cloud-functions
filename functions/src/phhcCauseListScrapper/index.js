@@ -1,14 +1,16 @@
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../../.env") });
+
 const functions = require("firebase-functions");
-const { fetchPHHCCauseList } = require("./phhcCauseListScrapper");
-const { 
-  checkEntryExists, 
-  saveExtractedPdfs, 
+const { PHHCCauseListScrapper } = require("./phhcCauseListScrapper");
+const {
+  checkEntryExists,
+  saveExtractedPdfs,
   fetchUploadAndParsePdf,
   getSubscribedCases,
-  insertNotifications,
-  updateUserCase
+  updateUserCase,
 } = require("./components");
-const { processWhatsAppNotificationsWithTemplate } = require("../notification/processWhatsappNotification");
+const { notifyPhhcCauseListMatch } = require("./components/notification");
 
 const regionFunctions = functions.region("asia-south1");
 
@@ -18,24 +20,47 @@ const runtimeOpts = {
 };
 
 /**
- * Normalize case number for matching
- * Same logic as High Court scraper
+ * Collapse whitespace, strip zero-width chars, ASCII/Unicode dashes and slashes, lowercase.
+ * PDF extractors often emit en-dash (U+2013) or soft hyphens; substring match failed if we only stripped [-/].
+ */
+const normalizeMatchText = (text) => {
+  if (!text) return "";
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/\p{Pd}/gu, "")
+    .replace(/\//g, "")
+    .toLowerCase();
+};
+
+/**
+ * Normalize case number for matching (same token rules as High Court scraper + unicode dash handling).
  */
 const normalizeCaseNumber = (caseNumber) => {
   if (!caseNumber) return null;
   const parts = caseNumber.match(/\D+|\d+/g);
-  if (!parts) return caseNumber.replace(/\s+/g, "").toLowerCase();
-  return parts.map((p) => (/^\d+$/.test(p) ? p.replace(/^0+/, "") : p.replace(/[-/]/g, ""))).join("").replace(/\s+/g, "").toLowerCase();
+  if (!parts) return normalizeMatchText(caseNumber);
+  const joined = parts
+    .map((p) =>
+      /^\d+$/.test(p) ? p.replace(/^0+/, "") : p.replace(/[\p{Pd}\/]/gu, "")
+    )
+    .join("");
+  return normalizeMatchText(joined);
 };
 
+/** Same default tester UUID as scCauseListScrapper when test=true but testerUserId omitted */
+const DEFAULT_TEST_NOTIFY_USER_ID = "677190fb-839e-45db-afe1-8c10d6206e3b";
+
 /**
- * HTTP Cloud Function for scraping Punjab & Haryana High Court cause list
- * 
- * Request body:
- * {
- *   "date": "MM/DD/YYYY" or "DD-MM-YYYY", // Date for cause list (defaults to tomorrow)
- *   "listType": "All Cause Lists" // Optional list type (defaults to "All Cause Lists")
- * }
+ * HTTP Cloud Function: PHHC cause list (same roles as highCourtCasesUpsert/index + hcCauseListScrapper).
+ * 1) PHHCCauseListScrapper — browser-only scrape (see phhcCauseListScrapper.js, like highCourtScrapper.js).
+ * 2) PDF download / parse / bucket JSON cache — here.
+ * 3) Match subscribed Chandigarh HC cases in PDF text; WhatsApp via order_status template (like hcCauseListScrapper).
+ *
+ * Body (optional, aligned with scCauseListScrapper):
+ * - test | Test: if true, only the tester user receives WhatsApp / notification rows.
+ * - testerUserId | tester_user_id | testNotifyUserId | test_notify_user_id: UUID of that user.
+ *   If test mode is on and this is omitted, uses the same default UUID as scCauseListScrapper.
  */
 exports.phhcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
   .onRequest(async (req, res) => {
@@ -45,12 +70,35 @@ exports.phhcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
     try {
       // Parse request body
       let body = req.body;
-      if (typeof req.body === 'string') {
+      if (typeof req.body === "string") {
         body = JSON.parse(body);
+      }
+      if (!body || typeof body !== "object") {
+        body = {};
+      }
+
+      const testRaw = body.Test ?? body.test ?? false;
+      const testMode =
+        testRaw === true || String(testRaw).trim().toLowerCase() === "true";
+      const testerUserIdRaw =
+        body.testerUserId ??
+        body.tester_user_id ??
+        body.testNotifyUserId ??
+        body.test_notify_user_id;
+      const testNotifyUserId =
+        testerUserIdRaw && String(testerUserIdRaw).trim()
+          ? String(testerUserIdRaw).trim()
+          : testMode
+            ? DEFAULT_TEST_NOTIFY_USER_ID
+            : null;
+      if (testMode) {
+        console.log(
+          `[info] [phhcCauseListScrapper] Test mode: notifications only for user_id=${testNotifyUserId}`
+        );
       }
 
       // Get date from request or default to tomorrow
-      let date = body?.date || null;
+      let date = body.date || null;
       if (!date) {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -60,8 +108,8 @@ exports.phhcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
         date = `${day}/${month}/${year}`; // DD/MM/YYYY format (matches datepicker format)
       }
 
-      // Get list type from request or use default
-      const listType = body?.listType || "All Cause Lists";
+      // Maps to PHHC <select name="urg_ord"> via resolveListTypeValue (e.g. URGENT→U, all→1).
+      const listType = body.listType || "URGENT";
 
       console.log("[info] [phhcCauseListScrapper] Date:", date);
       console.log("[info] [phhcCauseListScrapper] List Type:", listType);
@@ -71,9 +119,8 @@ exports.phhcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
         listType: listType
       };
 
-      // ========== PHASE 1: SCRAPING ==========
-      // Fetch cause list (keep existing scraping function as-is)
-      const results = await fetchPHHCCauseList(formData);
+      // ========== PHASE 1: SCRAPING (browser only) ==========
+      const results = await PHHCCauseListScrapper(formData);
       
       if (!results.pdfLinks || results.pdfLinks.length === 0) {
         return res.status(200).json({
@@ -122,7 +169,12 @@ exports.phhcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
             let pdfInfo;
             let errorMessage = "Failed to download/parse PDF";
             try {
-              pdfInfo = await fetchUploadAndParsePdf(url, listDate, results.cookieHeader);
+              pdfInfo = await fetchUploadAndParsePdf(
+                url,
+                listDate,
+                results.cookieHeader,
+                results.refererUrl
+              );
             } catch (pdfErr) {
               errorMessage = pdfErr.message || errorMessage;
               console.error(`[error] [phhcCauseListScrapper] Exception processing PDF ${url}:`, pdfErr.message);
@@ -182,30 +234,58 @@ exports.phhcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
       const causeList = [];
       let notificationsSent = 0;
 
-      // Search PDFs for subscribed cases
+      const [dDay, dMonth, dYear] = formattedDate.split("-");
+      const dayISO = `${dYear}-${dMonth}-${dDay}`;
+
       for (const row of subscribedCases) {
-        const { case_number, mobile_number, user_id, case_id } = row;
+        const { case_number, mobile_number, country_code, user_id, case_id } = row;
         const normalizedCase = normalizeCaseNumber(case_number);
 
+        const matchingUrls = new Set();
         for (const [url, pdfText] of Object.entries(allExtractedPdfs)) {
-          const normalizedPdfText = pdfText.replace(/\s+/g, "").replace(/[-/]/g, "").toLowerCase();
-          const caseMatch = normalizedCase ? normalizedPdfText.includes(normalizedCase) : false;
+          const normalizedPdfText = normalizeMatchText(pdfText);
+          const caseMatch = normalizedCase
+            ? normalizedPdfText.includes(normalizedCase)
+            : false;
+          if (caseMatch) matchingUrls.add(url);
+        }
 
-          if (caseMatch) {
-            try {
-              const identifier = case_number;
-              const message = `You have a new order on ${identifier} dated ${formattedDate}.\nSee ${url} for more details.`;
+        if (matchingUrls.size === 0) continue;
 
-              const { id } = await insertNotifications(identifier, user_id, "whatsapp", mobile_number, message);
-              causeList.push({ user_id, case_id });
-              await processWhatsAppNotificationsWithTemplate(id, "order_status", [identifier, formattedDate, url]);
-              await updateUserCase(case_id, formattedDate);
-              notificationsSent++;
-              console.log(`[info] [phhcCauseListScrapper] Notification sent for case ${identifier}`);
-            } catch (notifyErr) {
-              console.error(`[error] [phhcCauseListScrapper] Failed to notify user ${user_id} for case ${identifier}:`, notifyErr);
-            }
+        if (testMode && String(user_id) !== testNotifyUserId) {
+          console.log(
+            `[info] [phhcCauseListScrapper] Test mode: PDF match for user_id=${user_id} case_id=${case_id} — skipping notification`
+          );
+          continue;
+        }
+
+        const firstUrl = matchingUrls.values().next().value;
+        const identifier = case_number;
+
+        try {
+          const notifyId = await notifyPhhcCauseListMatch({
+            case_id,
+            user_id,
+            country_code,
+            mobile_number,
+            case_number,
+            formattedDate,
+            pdfUrl: firstUrl,
+          });
+          if (!notifyId) {
+            continue;
           }
+          causeList.push({ user_id, case_id });
+          await updateUserCase(case_id, formattedDate);
+          notificationsSent++;
+          console.log(
+            `[info] [phhcCauseListScrapper] WhatsApp (order_status) queued for case ${identifier}, day ${dayISO}`
+          );
+        } catch (notifyErr) {
+          console.error(
+            `[error] [phhcCauseListScrapper] Failed to notify user ${user_id} for case ${identifier}:`,
+            notifyErr
+          );
         }
       }
 
@@ -219,7 +299,9 @@ exports.phhcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https
           pdfsExtracted: Object.keys(allExtractedPdfs).length,
           failedPdfs: failedPdfs,
           subscribedCases: subscribedCases.length,
-          notificationsSent: notificationsSent
+          notificationsSent: notificationsSent,
+          testMode,
+          ...(testMode ? { testNotifyUserId } : {})
         }
       });
 

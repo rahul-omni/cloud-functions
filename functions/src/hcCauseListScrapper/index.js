@@ -167,7 +167,7 @@ exports.hcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https.onReque
 
       try {
         const contact = `${country_code || ""}${mobile_number || ""}`.trim();
-        const { id } = await insertNotifications(
+        const inserted = await insertNotifications(
           case_id,
           dayISO,
           user_id,
@@ -175,9 +175,15 @@ exports.hcCauseListScrapper = regionFunctions.runWith(runtimeOpts).https.onReque
           contact,
           message
         );
+        if (!inserted || !inserted.id) {
+          console.log(
+            `[info] Skip WhatsApp: already sent for case_id=${case_id} day=${dayISO} (notifications dedupe)`
+          );
+          continue;
+        }
         causeList.push({ user_id, case_id });
         // Template params: [caseNumber, formattedDate, link]
-        await processWhatsAppNotificationsWithTemplate(id, "order_status", [identifier, formattedDate, firstUrl]);
+        await processWhatsAppNotificationsWithTemplate(inserted.id, "order_status", [identifier, formattedDate, firstUrl]);
         await updateUserCase(case_id, formattedDate);
       } catch (notifyErr) {
         console.error(`[error] Failed to notify user ${user_id} for case ${identifier}:`, notifyErr);

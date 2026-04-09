@@ -197,13 +197,14 @@ const insertNotifications = async (case_id, day, user_id, method, contact, messa
       message = EXCLUDED.message,
       status = 'pending',
       created_at = CURRENT_TIMESTAMP
+    WHERE notifications.status IS DISTINCT FROM 'success'
     RETURNING id, method;
   `;
 
   const values = [case_id, day, user_id, method, contact, message, "pending"];
 
   const result = await db.query(sql, values);
-  return result.rows[0];
+  return result.rows[0] || null;
 };
 
 module.exports = {

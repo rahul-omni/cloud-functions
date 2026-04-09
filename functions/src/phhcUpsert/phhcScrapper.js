@@ -47,7 +47,9 @@ const PHHCJudgmentsScrapper = async (date, caseType, caseNumber, caseYear, conne
             try {
                 console.log(`[PHHCJudgmentsScrapper] Processing case: ${caseLink.caseId}`);
                 
-                const caseData = await extractCaseDetails(page, caseLink.fullUrl);
+                const caseData = await extractCaseDetails(page, caseLink.fullUrl, {
+                    skipNavigation: caseLink.skipNavigation === true
+                });
                 
                 if (caseData) {
                     const results = await processCaseAndInsertToDB(caseData, cookies, dbClient);
@@ -72,7 +74,7 @@ const PHHCJudgmentsScrapper = async (date, caseType, caseNumber, caseYear, conne
         throw error;
     } finally {
         await browser.close();
-        console.log("[end] [PHHCJudgmentsScrapper] PHHC Scraping completed successfully");
+        console.log('[end] [PHHCJudgmentsScrapper] PHHC scrape run finished');
         
         if (dbClient) {
             try {

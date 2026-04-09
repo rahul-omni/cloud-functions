@@ -300,43 +300,49 @@ async function processPDFAndInsertToDB(processedRows, cookies, date, dbClient) {
                 }
                 if (row.Order && row.Order.href) {  
                     try {
+                        const judgmentUrlDoc = existingEntry.judgment_url || { orders: [] };
+                        const existingOrders = Array.isArray(judgmentUrlDoc.orders)
+                            ? judgmentUrlDoc.orders
+                            : [];
+                        const judgmentDateKey = row.JudgetmentDate || row.JudgmentDate || date;
+
+                        let existsInOrders = false;
+                        for (const order of existingOrders) {
+                            if (order.judgmentDate == judgmentDateKey) {
+                                existsInOrders = true;
+                                break;
+                            }
+                        }
+                        if (existsInOrders) {
+                            console.log(
+                                `ℹ️  PDF for judgment date ${judgmentDateKey} already exists in database. Skipping upload; updating site_sync only.`
+                            );
+                            await updateSiteSync(dbClient, existingEntry.id, sync_site);
+                            continue;
+                        }
+
                         const diarySanitized = String(row.DiaryNumber).replace(/[^\w]+/g, '_');
                         const caseTypeSanitized = String(row.case_type || '').replace(/[^\w]+/g, '_');
                         const judgmentDateSanitized = String(row.JudgetmentDate || date || '').replace(/[^0-9]/g, '');
                         const timePart = new Date().toISOString().slice(11, 19).replace(/:/g, '');
                         const filename = `HCDEL_${diarySanitized}_${caseTypeSanitized}_${judgmentDateSanitized}_${timePart}.pdf`;
                         const gcsFilename = `high-court-judgement-pdf/${filename}`;
-                        
+
                         const uploadResult = await uploadPDFToGCS(cookies, row.Order.href, gcsFilename);
 
                         console.log("uploadResultPDFUpload", uploadResult);
 
-                        let updatedOrder = existingEntry.judgment_url || { orders: [] };
-
-                        let existsInOrders = false;
-
-                        for (const order of updatedOrder.orders) {
-                            if (order.judgmentDate == row.JudgetmentDate) {
-                                console.log(`ℹ️  PDF for judgment date ${row.JudgetmentDate} already exists in database. Updating site_sync only.`);
-                                existsInOrders = true;
-                                await updateSiteSync(dbClient, existingEntry.id, sync_site);
-                                break;
-                            }
-                        }
-                        if (existsInOrders) {
-                            continue;
-                        }
                         const order = {
                             gcsPath: uploadResult.gcsPath,
                             signedUrl: uploadResult.signedUrl,
                             filename: uploadResult.filename,
                             judgmentDate: row.JudgetmentDate || date,
-                        }
-                        updatedOrder = { orders: [...updatedOrder.orders, order] };
+                        };
+                        const mergedOrders = { orders: [...existingOrders, order] };
                         console.log(`✅ [processPDFAndInsertToDB] PDF uploaded and path updated: ${filename}`);
                         uploadedCount++;
                         updatedCount++;
-                        await updateJudgmentUrl(dbClient, existingEntry.id, updatedOrder, sync_site);
+                        await updateJudgmentUrl(dbClient, existingEntry.id, mergedOrders, sync_site);
                         
                         // Send notifications after judgment URL is updated
                         if(date !== null) {
@@ -405,8 +411,7 @@ async function checkIfEntryExists(dbClient, diaryNumber, caseType) {
         `;
     
         const result = await dbClient.query(query, [diaryNumber, caseType]);
-        console.log(`Entry exists result:`, result);
-        console.log(`Entry exists result:`, result.rows);
+        
         return result.rows.length > 0 ? result.rows[0] : null;
         
     } catch (error) {

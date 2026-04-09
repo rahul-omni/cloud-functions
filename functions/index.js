@@ -34,10 +34,10 @@ module.exports = {
   // fetchHighCourtJudgments,
   scCauseListScrapper,
   // cronForSCCauseList,
-  hcCauseListScrapper
+  hcCauseListScrapper,
   // tentativeDateSC,
   // supremeCourtCasesUpsert,
   // delhiDistrictCourtCauseListScrapper,
-  // phhcCauseListScrapper,
+  phhcCauseListScrapper,
   // rhcJaipurCauseListScrapper,
 };

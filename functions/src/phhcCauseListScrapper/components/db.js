@@ -26,6 +26,7 @@ const getSubscribedCases = async () => {
           cd.case_number,
           cd.id AS case_id,
           cd.diary_number,
+          (SELECT country_code FROM users WHERE id = r.user_id) AS country_code,
           (SELECT mobile_number FROM users WHERE id = r.user_id) AS mobile_number,
           cd.last_synced;`;
 
@@ -34,19 +35,15 @@ const getSubscribedCases = async () => {
 };
 
 /**
- * Insert notification record
- * @param {string} diary_number - Diary number
- * @param {string} user_id - User ID
- * @param {string} method - Notification method (e.g., 'whatsapp')
- * @param {string} contact - Contact information (e.g., mobile number)
- * @param {string} message - Notification message
- * @returns {Promise<{id: string, method: string}>}
+ * One row per (user_id, case_id, day, method) — same as hcCauseListScrapper.
+ * `day` is YYYY-MM-DD (list date). Re-runs do not reset rows already marked success (no duplicate WhatsApp).
  */
-const insertNotifications = async (diary_number, user_id, method, contact, message) => {
+const insertNotifications = async (case_id, day, user_id, method, contact, message) => {
   const sql = `
     INSERT INTO notifications (
       id,
-      dairy_number,
+      case_id,
+      day,
       user_id,
       method,
       contact,
@@ -61,22 +58,23 @@ const insertNotifications = async (diary_number, user_id, method, contact, messa
       $4,
       $5,
       $6,
+      $7,
       CURRENT_TIMESTAMP
     )
+    ON CONFLICT (user_id, case_id, day, method)
+    DO UPDATE SET
+      contact = EXCLUDED.contact,
+      message = EXCLUDED.message,
+      status = 'pending',
+      created_at = CURRENT_TIMESTAMP
+    WHERE notifications.status IS DISTINCT FROM 'success'
     RETURNING id, method;
   `;
 
-  const values = [
-    diary_number,
-    user_id,
-    method,
-    contact,
-    message,
-    'pending'
-  ];
+  const values = [case_id, day, user_id, method, contact, message, "pending"];
 
   const result = await db.query(sql, values);
-  return result.rows[0];
+  return result.rows[0] || null;
 };
 
 /**

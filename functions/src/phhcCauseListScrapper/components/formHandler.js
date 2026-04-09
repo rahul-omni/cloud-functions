@@ -1,5 +1,95 @@
 const { wait, convertDateFormat } = require('./utils');
 
+/** Values for PHHC <select name="urg_ord"> (Search Daily Cause List in PDF). */
+const VALID_URG_ORD = new Set([
+  "1",
+  "B",
+  "U",
+  "O",
+  "T",
+  "R",
+  "S",
+  "W",
+  "D",
+  "G",
+  "A",
+  "L",
+  "E",
+  "Q",
+  "H",
+  "I",
+  "J",
+  "N",
+  "X",
+  "M",
+  "V",
+  "F",
+]);
+
+/**
+ * Map request body / labels to urg_ord option values.
+ */
+function resolveListTypeValue(input) {
+  if (input === undefined || input === null) return "U";
+  const raw = String(input).trim();
+  if (raw === "") return "U";
+
+  const lower = raw.toLowerCase();
+  if (
+    lower === "all" ||
+    lower === "select all" ||
+    lower === "selectall" ||
+    lower === "all cause lists"
+  ) {
+    return "1";
+  }
+
+  if (raw === "1" || VALID_URG_ORD.has(raw.toUpperCase())) {
+    return raw.toUpperCase() === "1" ? "1" : raw.toUpperCase();
+  }
+
+  const aliases = {
+    "complete list": "B",
+    complete: "B",
+    urgent: "U",
+    ordinary: "O",
+    takenup: "T",
+    regular: "R",
+    "special-db": "S",
+    special: "S",
+    "liquidation(ordinary)": "W",
+    "liquidation ordinary": "W",
+    samadhan: "D",
+    "pre lok-adalat": "A",
+    "pre lok adalat": "A",
+    "lok-adalat": "L",
+    "lok adalat": "L",
+    election: "E",
+    "liquidation (urgent)": "Q",
+    "liquidation urgent": "Q",
+    "commercial(urgent)": "H",
+    "commercial urgent": "H",
+    "commercial(ordinary)": "I",
+    "commercial ordinary": "I",
+    objections: "J",
+    "cl notes": "N",
+    miscellaneous: "X",
+    "mediation drive": "M",
+    mediation: "G",
+    "old cases": "V",
+    "fix today": "F",
+  };
+
+  const compact = lower.replace(/\s+/g, " ");
+  if (aliases[compact]) return aliases[compact];
+  if (aliases[lower]) return aliases[lower];
+
+  console.warn(
+    `[formHandler] Unknown listType "${raw}", defaulting to U (Urgent)`
+  );
+  return "U";
+}
+
 /**
  * Fill the date in the datepicker field
  * @param {Object} page - Page instance
@@ -198,105 +288,64 @@ const fillDate = async (page, date) => {
 };
 
 /**
- * Select list type from dropdown
- * @param {Object} page - Page instance
- * @param {string} listType - List type value (e.g., "All Cause Lists")
- * @returns {Promise<void>}
+ * Select list type from <select name="urg_ord"> (PHHC causelist form).
+ * @param {string} resolvedValue - Option value: "1" (all), "U" (urgent), etc.
  */
-const selectListType = async (page, listType = 'All Cause Lists') => {
+const selectListType = async (page, resolvedValue) => {
   try {
-    console.log(`[info] [formHandler] Selecting list type: ${listType}`);
-    
-    // Based on HTML source, the select name is "urg_ord" and "All Cause Lists" has value "1"
-    // Try to find the select by name first
-    const selectors = [
-      'select[name="urg_ord"]',
-      'select[name*="urg"]',
-      'select[name*="ord"]',
-      'select'
-    ];
-    
-    let dropdownFound = false;
-    for (const selector of selectors) {
-      try {
-        console.log(`[debug] [formHandler] Trying selector: ${selector}`);
-        await page.waitForSelector(selector, { visible: true, timeout: 10000 }); // 10 seconds
-        const element = await page.$(selector);
-        if (element) {
-          console.log(`[debug] [formHandler] Found element with selector: ${selector}`);
-          // Try to select by visible text first
-          try {
-            await page.select(selector, listType);
-            // Verify it was selected
-            const selectedValue = await page.evaluate((sel) => {
-              const select = document.querySelector(sel);
-              return select ? select.value : null;
-            }, selector);
-            if (selectedValue) {
-              dropdownFound = true;
-              console.log(`[info] [formHandler] Selected list type using selector: ${selector} by text, value: ${selectedValue}`);
-              break;
-            }
-          } catch (e) {
-            // If that fails, try to find by option text and set value
-            const selected = await page.evaluate((selector, text) => {
-              const select = document.querySelector(selector);
-              if (!select) return false;
-              
-              const options = Array.from(select.options);
-              const matchingOption = options.find(opt => 
-                opt.textContent.trim() === text || 
-                opt.textContent.trim().includes(text) ||
-                text.includes(opt.textContent.trim())
-              );
-              
-              if (matchingOption) {
-                select.value = matchingOption.value;
-                const event = new Event('change', { bubbles: true });
-                select.dispatchEvent(event);
-                // Also trigger jQuery change if available
-                if (window.$) {
-                  window.$(select).trigger('change');
-                }
-                return { success: true, value: matchingOption.value, text: matchingOption.textContent.trim() };
-              }
-              return false;
-            }, selector, listType);
-            
-            if (selected && selected.success) {
-              console.log(`[info] [formHandler] Selected list type: ${selected.text} (value: ${selected.value})`);
-              dropdownFound = true;
-              break;
-            }
-          }
+    console.log(
+      `[info] [formHandler] Selecting list type (resolved value): "${resolvedValue}"`
+    );
+
+    const primary = 'select[name="urg_ord"]';
+    const alternate = 'select[name="listType"]';
+
+    let selector = primary;
+    try {
+      await page.waitForSelector(primary, { visible: true, timeout: 15000 });
+    } catch (_) {
+      console.warn(
+        `[warn] [formHandler] ${primary} not found, trying ${alternate}`
+      );
+      selector = alternate;
+      await page.waitForSelector(alternate, { visible: true, timeout: 15000 });
+    }
+
+    const ok = await page.evaluate(
+      (sel, value) => {
+        const select = document.querySelector(sel);
+        if (!select) return { ok: false, reason: "no select" };
+        const options = Array.from(select.options).map((o) => o.value);
+        if (!options.includes(value)) {
+          return { ok: false, reason: "value not in options", options };
         }
-      } catch (e) {
-        // Try next selector
-        continue;
-      }
+        select.value = value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        if (window.$) {
+          window.$(select).trigger("change");
+        }
+        return { ok: true, value: select.value, name: select.name };
+      },
+      selector,
+      resolvedValue
+    );
+
+    if (!ok.ok) {
+      console.error(
+        `[error] [formHandler] Failed to set list type:`,
+        JSON.stringify(ok)
+      );
+      throw new Error(ok.reason || "Could not set list type dropdown");
     }
-    
-    if (!dropdownFound) {
-      console.log('[warning] [formHandler] Could not find list type dropdown, will use default value "1" (All Cause Lists) in AJAX call');
-      // Log all select elements on the page for debugging
-      const allSelects = await page.evaluate(() => {
-        const selects = Array.from(document.querySelectorAll('select'));
-        return selects.map(sel => ({
-          name: sel.name,
-          id: sel.id,
-          className: sel.className,
-          value: sel.value,
-          options: Array.from(sel.options).map(opt => ({ text: opt.textContent.trim(), value: opt.value }))
-        }));
-      });
-      console.log(`[debug] [formHandler] All select elements on page:`, JSON.stringify(allSelects, null, 2));
-    }
-    
-    console.log('[debug] [formHandler] List type selected, waiting 1 second...');
-    await wait(1000);
+
+    console.log(
+      `[info] [formHandler] List type set on <select name="${ok.name}"> value="${ok.value}"`
+    );
+    await wait(500);
   } catch (error) {
-    console.error('[error] [formHandler] Error selecting list type:', error.message);
-    // Don't throw - list type might be optional
+    console.error("[error] [formHandler] Error selecting list type:", error.message);
+    throw error;
   }
 };
 
@@ -306,7 +355,7 @@ const selectListType = async (page, listType = 'All Cause Lists') => {
  * @param {string} expectedDate - The date value that should be in the form
  * @returns {Promise<void>}
  */
-const clickViewCLButton = async (page, expectedDate) => {
+const clickViewCLButton = async (page, expectedDate, listTypeResolved = "U") => {
   try {
     console.log('[info] [formHandler] Submitting form via direct AJAX call...');
     
@@ -352,11 +401,12 @@ const clickViewCLButton = async (page, expectedDate) => {
     
     // Instead of clicking the button, directly submit the form via AJAX with correct data
     console.log('[debug] [formHandler] Submitting form directly via AJAX...');
-    const ajaxResult = await page.evaluate((date) => {
+    const ajaxResult = await page.evaluate((date, listTypeValue) => {
       return new Promise((resolve) => {
         const form = document.querySelector('#cause_list');
         const datepicker = document.getElementById('datepicker');
-        const select = document.querySelector('select[name="urg_ord"]');
+        const urgSelect = document.querySelector('select[name="urg_ord"]');
+        const listTypeSelect = document.querySelector('select[name="listType"]');
         
         // Ensure all fields are set
         if (datepicker) {
@@ -366,29 +416,28 @@ const clickViewCLButton = async (page, expectedDate) => {
           }
         }
         
-        // Get list type value - "All Cause Lists" has value "1"
-        let listTypeValue = '1'; // Default to "All Cause Lists"
-        if (select) {
-          listTypeValue = select.value || '1';
-          // If value is empty, find "All Cause Lists" option
-          if (!listTypeValue || listTypeValue === '' || listTypeValue === '0') {
-            const options = Array.from(select.options);
-            const allCauseListsOption = options.find(opt => 
-              opt.textContent.trim().includes('All Cause Lists') ||
-              opt.textContent.trim() === 'All Cause Lists'
-            );
-            if (allCauseListsOption) {
-              listTypeValue = allCauseListsOption.value || '1';
-              select.value = listTypeValue;
-            }
+        let paramName = 'urg_ord';
+        let valueToSend = listTypeValue;
+
+        if (urgSelect) {
+          urgSelect.value = listTypeValue;
+          if (window.$) {
+            window.$(urgSelect).trigger('change');
           }
+          valueToSend = urgSelect.value;
+          paramName = 'urg_ord';
+        } else if (listTypeSelect) {
+          listTypeSelect.value = listTypeValue;
+          if (window.$) {
+            window.$(listTypeSelect).trigger('change');
+          }
+          valueToSend = listTypeSelect.value;
+          paramName = 'listType';
         }
         
-        console.log('[page] List type value to send:', listTypeValue);
+        console.log('[page] List type param:', paramName, 'value:', valueToSend);
         
-        // Always use manual serialization to ensure both fields are included
-        // Don't rely on form.serialize() as it might miss fields
-        const formData = `t_f_date=${encodeURIComponent(date)}&urg_ord=${encodeURIComponent(listTypeValue)}`;
+        const formData = `t_f_date=${encodeURIComponent(date)}&${paramName}=${encodeURIComponent(valueToSend)}`;
         const fullData = formData + '&action=show_causeList';
         console.log('[page] Full form data to send:', fullData);
         
@@ -433,7 +482,7 @@ const clickViewCLButton = async (page, expectedDate) => {
           resolve({ error: 'jQuery not available' });
         }
       });
-    }, expectedDate);
+    }, expectedDate, listTypeResolved);
     
     console.log('[debug] [formHandler] Direct AJAX submission result:', JSON.stringify(ajaxResult, null, 2));
     
@@ -479,7 +528,11 @@ const clickViewCLButton = async (page, expectedDate) => {
 const fillForm = async (page, formData) => {
   try {
     const { date, listType } = formData;
-    
+    const listTypeResolved = resolveListTypeValue(listType);
+    console.log(
+      `[info] [formHandler] listType raw=${JSON.stringify(listType)} -> resolved="${listTypeResolved}"`
+    );
+
     // Fill date
     if (date) {
       await fillDate(page, date);
@@ -499,11 +552,8 @@ const fillForm = async (page, formData) => {
       throw new Error('Date is required but not provided');
     }
     
-    // Select list type if provided
-    if (listType) {
-      await selectListType(page, listType);
-    }
-    
+    await selectListType(page, listTypeResolved);
+
     // Verify form data one more time before clicking
     // Also ensure the form field name="t_f_date" has the value
     // Get the current date value from the datepicker
@@ -515,7 +565,9 @@ const fillForm = async (page, formData) => {
     const formDataCheck = await page.evaluate((expectedDate) => {
       const datepicker = document.getElementById('datepicker');
       const t_f_date = document.querySelector('input[name="t_f_date"]');
-      const select = document.querySelector('select[name="urg_ord"]');
+      const select =
+        document.querySelector('select[name="urg_ord"]') ||
+        document.querySelector('select[name="listType"]');
       const form = document.querySelector('#cause_list');
       
       // Ensure both the datepicker and t_f_date field have the value
@@ -566,8 +618,7 @@ const fillForm = async (page, formData) => {
       console.log(`[debug] [formHandler] Form will serialize as: ${formDataCheck.formSerialized}`);
     }
     
-    // Click View CL button (pass the date value - reuse currentDateValue from above)
-    await clickViewCLButton(page, currentDateValue);
+    await clickViewCLButton(page, currentDateValue, listTypeResolved);
     
     console.log('[info] [formHandler] Form filled and submitted successfully');
   } catch (error) {
@@ -580,6 +631,7 @@ module.exports = {
   fillForm,
   fillDate,
   selectListType,
-  clickViewCLButton
+  clickViewCLButton,
+  resolveListTypeValue,
 };
 

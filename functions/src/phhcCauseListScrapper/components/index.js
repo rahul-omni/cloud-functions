@@ -5,6 +5,7 @@ const dataExtractor = require('./dataExtractor');
 const utils = require('./utils');
 const storage = require('./storage');
 const db = require('./db');
+const notification = require('./notification');
 
 module.exports = {
   ...browserManager,
@@ -12,6 +13,7 @@ module.exports = {
   ...dataExtractor,
   ...utils,
   ...storage,
-  ...db
+  ...db,
+  ...notification,
 };
 
